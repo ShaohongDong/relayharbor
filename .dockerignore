@@ -1,0 +1,6 @@
+.git
+.cache
+test-results
+__pycache__
+gost.json
+*.local.json

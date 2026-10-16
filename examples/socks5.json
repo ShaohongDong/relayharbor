@@ -1,0 +1,23 @@
+{
+  "services": [
+    {
+      "name": "socks5",
+      "addr": "0.0.0.0:1080",
+      "handler": {
+        "type": "socks5",
+        "auther": "users",
+        "metadata": {"udp": false, "notls": true}
+      },
+      "listener": {"type": "tcp"}
+    }
+  ],
+  "authers": [
+    {
+      "name": "users",
+      "auths": [
+        {"username": "CHANGE_ME_user1", "password": "CHANGE_ME_password1"},
+        {"username": "CHANGE_ME_user2", "password": "CHANGE_ME_password2"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+name: deployment-tests
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static configuration tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          bash -n install.sh tests/run-integration.sh
+      - name: Install ARM64 emulator
+        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+      - name: Systemd matrix and ARM64 protocol tests
+        run: bash tests/run-integration.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results/

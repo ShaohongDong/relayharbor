@@ -243,8 +243,9 @@ def require_host():
         if sep:
             info[key] = val.strip('"')
     if (info.get("ID"), info.get("VERSION_ID")) not in {
-            ("ubuntu", "22.04"), ("ubuntu", "24.04"), ("debian", "12"), ("debian", "13")}:
-        raise Error("支持 Ubuntu 22.04/24.04、Debian 12/13。")
+            ("ubuntu", "20.04"), ("ubuntu", "22.04"), ("ubuntu", "24.04"),
+            ("debian", "12"), ("debian", "13")}:
+        raise Error("支持 Ubuntu 20.04/22.04/24.04、Debian 12/13。")
     architecture()
     if not Path("/run/systemd/system").is_dir():
         raise Error("需要正在运行的 systemd；普通 Docker 容器不适合作为部署目标。")
@@ -275,7 +276,7 @@ def download(url, dest):
 
 
 def version_arg(value):
-    value = value.removeprefix("v")
+    value = value[1:] if value.startswith("v") else value
     if not re.fullmatch(r"3\.\d+\.\d+", value):
         raise argparse.ArgumentTypeError("版本必须是 3.x.y 格式的正式版本。")
     return value
@@ -341,9 +342,10 @@ def validate_native(release, cfg):
 def verify_release(release):
     try:
         binary = Path(release["binary"])
-        if binary.is_symlink() or not binary.is_relative_to(RELEASES) or digest(binary) != release["sha256"]:
+        binary.relative_to(RELEASES)
+        if binary.is_symlink() or digest(binary) != release["sha256"]:
             raise Error("受管二进制完整性检查失败。")
-    except (KeyError, OSError, TypeError) as exc:
+    except (KeyError, OSError, TypeError, ValueError) as exc:
         raise Error("受管二进制缺失或安装状态损坏。") from exc
 
 

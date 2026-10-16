@@ -24,7 +24,7 @@ wait_systemd() {
     docker logs "${test_container}" >&2
     return 1
 }
-for spec in ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim; do
+for spec in ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim; do
     image="gost-deploy-test:${spec//[:.]/-}"
     name="gost-deploy-test-${spec//[:.]/-}-$$"
     log="test-results/${spec//[:.]/-}.log"

@@ -29,7 +29,7 @@ elif sys.argv[1] == "finish":
     baseline = json.loads(BASELINE.read_text())
     assert baseline == sources(), "source changed during tests; rerun against final sources"
     matrix = {}
-    for name in ("ubuntu-22-04", "ubuntu-24-04", "debian-12-slim", "debian-13-slim"):
+    for name in ("ubuntu-20-04", "ubuntu-22-04", "ubuntu-24-04", "debian-12-slim", "debian-13-slim"):
         path = RESULTS / f"{name}.log"
         content = path.read_text()
         summary = [json.loads(line) for line in content.splitlines() if line.startswith('{"passed":')]

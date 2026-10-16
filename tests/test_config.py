@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 loader = importlib.machinery.SourceFileLoader("gostctl", str(ROOT / "gostctl"))
@@ -85,6 +86,30 @@ class Policy(unittest.TestCase):
     def test_example_cannot_be_installed(self):
         with self.assertRaises(g.Error):
             g.validate(g.read_json(ROOT / "examples/socks5.json"))
+
+    def test_version_argument_with_python38(self):
+        for value in ("3.3.0", "v3.3.0"):
+            self.assertEqual(g.version_arg(value), "3.3.0")
+        for value in ("vv3.3.0", "latest", "3.3.0-rc1"):
+            with self.assertRaises(g.argparse.ArgumentTypeError):
+                g.version_arg(value)
+
+    def test_release_verification_with_python38(self):
+        with tempfile.TemporaryDirectory() as temp:
+            releases = Path(temp) / "releases"
+            binary = releases / "3.3.0" / "gost"
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"test binary")
+            release = {"binary": str(binary), "sha256": g.digest(binary)}
+            with patch.object(g, "RELEASES", releases):
+                g.verify_release(release)
+                binary.write_bytes(b"changed")
+                with self.assertRaises(g.Error):
+                    g.verify_release(release)
+                outside = Path(temp) / "outside"
+                outside.write_bytes(b"test binary")
+                with self.assertRaises(g.Error):
+                    g.verify_release(dict(release, binary=str(outside)))
 
 
 if __name__ == "__main__":

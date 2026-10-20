@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
     </template>
     <template v-else-if="status">
       <p>先完成 HTTPS 部署，再在服务器执行：</p>
-      <pre class="config-preview">sudo gostctl anytls setup</pre>
+      <pre class="config-preview">在“部署设置”中初始化 AnyTLS</pre>
       <p class="muted">安装校验后的 AnyTLS 内核后，可在此创建独立用户和订阅。</p>
     </template>
     <el-drawer

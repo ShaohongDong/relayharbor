@@ -4,20 +4,18 @@ package api
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/ShaohongDong/relayharbor/internal/auth"
 	"github.com/ShaohongDong/relayharbor/internal/config"
 	"github.com/ShaohongDong/relayharbor/internal/manage"
 	"github.com/ShaohongDong/relayharbor/internal/supervisor"
-	"github.com/ShaohongDong/relayharbor/internal/webui"
 	"io"
 	"log"
 	"mime"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -53,7 +51,7 @@ type Backend interface {
 }
 type Handler struct {
 	Backend Backend
-	Token   string
+	Auth    *auth.Service
 }
 
 func reply(w http.ResponseWriter, status int, v any, rev string) {
@@ -75,6 +73,27 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(w, 405, map[string]any{"error": map[string]string{"code": "method_not_allowed", "message": "跨域访问未启用"}}, "")
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, Prefix+"/auth/") {
+		if h.Auth == nil {
+			reply(w, 503, map[string]any{"error": map[string]string{"code": "unavailable", "message": "认证不可用"}}, "")
+			return
+		}
+		h.Auth.ServeHTTP(w, r)
+		return
+	}
+	if !auth.IsLocal(r) {
+		if h.Auth == nil {
+			reply(w, 401, map[string]any{"error": map[string]string{"code": "unauthorized", "message": "需要登录"}}, "")
+			return
+		}
+		if _, ok := h.Auth.Check(r); !ok {
+			reply(w, 401, map[string]any{"error": map[string]string{"code": "unauthorized", "message": "请重新登录"}}, "")
+			return
+		}
+	}
+	if h.setup(w, r) {
+		return
+	}
 	data, rev, e := h.dispatch(r)
 	if e != nil {
 		status, code, msg := 400, "operation_failed", e.Error()
@@ -88,9 +107,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, map[string]any{"data": data, "revision": rev}, rev)
 }
 func (h *Handler) dispatch(r *http.Request) (any, string, error) {
-	if h.Token == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+h.Token)) != 1 {
-		return nil, "", fail(401, "unauthorized", "需要有效的 Bearer token")
-	}
 	if r.URL.Fragment != "" || !strings.HasPrefix(r.URL.Path, Prefix+"/") {
 		return nil, "", fail(404, "not_found", "接口不存在")
 	}
@@ -129,9 +145,23 @@ func (h *Handler) dispatch(r *http.Request) (any, string, error) {
 	if path == "/anytls" || strings.HasPrefix(path, "/anytls/") {
 		return h.anyTLS(r, path, body)
 	}
+	if r.Method != "GET" {
+		if m, ok := h.Backend.(*manage.Manager); ok {
+			if e := m.SetupBusy(); e != nil {
+				return nil, "", fail(409, "setup_busy", e.Error())
+			}
+		}
+	}
 	var data any
 	rev := ""
 	e := h.Backend.Locked(func() error {
+		if r.Method != "GET" {
+			if m, ok := h.Backend.(*manage.Manager); ok {
+				if e := m.SetupBusy(); e != nil {
+					return fail(409, "setup_busy", e.Error())
+				}
+			}
+		}
 		s, e := h.Backend.Load(false)
 		if e != nil {
 			return e
@@ -296,21 +326,6 @@ func (h *Handler) dispatch(r *http.Request) (any, string, error) {
 	})
 	return data, rev, e
 }
-func Serve(ctx context.Context, m *manage.Manager) error {
-	b, e := os.ReadFile(m.P.Token)
-	if e != nil {
-		return e
-	}
-	token := strings.TrimSpace(string(b))
-	if token == "" {
-		return errors.New("API token 不能为空")
-	}
-	l, e := net.Listen("tcp", Address)
-	if e != nil {
-		return e
-	}
-	return ServeListener(ctx, l, webui.Handler(&Handler{m, token}))
-}
 func ServeListener(ctx context.Context, l net.Listener, h http.Handler) error {
 	server := &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 180 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10, ErrorLog: log.New(io.Discard, "", 0)}
 	done := make(chan struct{})
@@ -331,11 +346,7 @@ func ServeListener(ctx context.Context, l net.Listener, h http.Handler) error {
 	}
 	return e
 }
-func Client(ctx context.Context, tokenPath, method, path string, value any, rev string) (json.RawMessage, string, error) {
-	b, e := os.ReadFile(tokenPath)
-	if e != nil {
-		return nil, "", errors.New("无法读取管理 token")
-	}
+func Client(ctx context.Context, socketPath, method, path string, value any, rev string) (json.RawMessage, string, error) {
 	var body io.Reader
 	if value != nil {
 		if raw, ok := value.(json.RawMessage); ok {
@@ -348,12 +359,13 @@ func Client(ctx context.Context, tokenPath, method, path string, value any, rev 
 	if e != nil {
 		return nil, "", errors.New("请求无效")
 	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(b)))
 	req.Header.Set("Content-Type", "application/json")
 	if rev != "" {
 		req.Header.Set("If-Match", `"`+rev+`"`)
 	}
-	transport := &http.Transport{Proxy: nil}
+	transport := &http.Transport{Proxy: nil, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return dialRoot(ctx, socketPath)
+	}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Timeout: 180 * time.Second, Transport: transport}
 	resp, e := client.Do(req)

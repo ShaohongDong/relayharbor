@@ -161,7 +161,26 @@ func evidence(mode string) error {
 		return errors.New("sources changed during campaign")
 	}
 	logs := map[string]any{}
-	for _, name := range []string{"ubuntu-20-04", "ubuntu-22-04", "ubuntu-24-04", "debian-12-slim", "debian-13-slim", "ubuntu-24-04-arm64-qemu", "debian-12-slim-arm64-qemu"} {
+	systems := "ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim"
+	arms := "ubuntu:24.04 debian:12-slim"
+	if v, ok := os.LookupEnv("GOST_TEST_SYSTEM_SPECS"); ok {
+		systems = v
+	}
+	if v, ok := os.LookupEnv("GOST_TEST_ARM_SPECS"); ok {
+		arms = v
+	}
+	names := []string{}
+	normalize := strings.NewReplacer(":", "-", ".", "-")
+	for _, v := range strings.Fields(systems) {
+		names = append(names, normalize.Replace(v))
+	}
+	for _, v := range strings.Fields(arms) {
+		names = append(names, normalize.Replace(v)+"-arm64-qemu")
+	}
+	if len(names) == 0 {
+		return errors.New("empty acceptance selection")
+	}
+	for _, name := range names {
 		path := "test-results/" + name + ".log"
 		b, e := os.ReadFile(path)
 		if e != nil {
@@ -190,7 +209,13 @@ func evidence(mode string) error {
 		hash, _ := manage.Digest(path)
 		logs[name] = map[string]any{"logSha256": hash, "passed": true, "routingScenarios": 9, "hardwareAcceptance": false}
 	}
-	for _, name := range []string{"browser-real", "browser-systemd"} {
+	browserLogs := []string{}
+	for _, spec := range strings.Fields(systems) {
+		if spec == "ubuntu:24.04" {
+			browserLogs = []string{"browser-real", "browser-systemd"}
+		}
+	}
+	for _, name := range browserLogs {
 		path := filepath.Join("test-results", name+".log")
 		b, e := os.ReadFile(path)
 		if e != nil {
@@ -239,7 +264,7 @@ func evidence(mode string) error {
 	}); e != nil {
 		return e
 	}
-	report := map[string]any{"createdAt": time.Now().UTC().Format(time.RFC3339), "sources": s, "binaries": binaries, "webAssets": assets, "environments": logs}
+	report := map[string]any{"createdAt": time.Now().UTC().Format(time.RFC3339), "sources": s, "binaries": binaries, "webAssets": assets, "environments": logs, "selectedSystems": strings.Fields(systems), "selectedARM": strings.Fields(arms), "fullMatrix": len(names) == 7}
 	if e = os.WriteFile("test-results/evidence.json", config.Bytes(report), 0600); e == nil {
 		fmt.Println("PASS source-bound evidence: test-results/evidence.json")
 	}

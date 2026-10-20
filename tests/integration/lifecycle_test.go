@@ -355,6 +355,7 @@ func TestLifecycle(t *testing.T) {
 	run(t, "profile", "list")
 	t.Log("PASS manager update and rollback")
 	verifyOperationsAPI(t)
+	verifySetupAccess(t)
 	run(t, "uninstall")
 	if _, e := os.Stat("/etc/gost-deploy/config.json"); e != nil {
 		t.Fatal("retained manifest missing")
@@ -367,6 +368,7 @@ func TestLifecycle(t *testing.T) {
 		}
 	}
 	t.Log("PASS retaining uninstall/reinstall/purge")
+	verifyInstallerDownload(t)
 	t.Log("PASS lifecycle acceptance")
 }
 func TestBootPrepare(t *testing.T) {
@@ -379,7 +381,7 @@ func TestBootPrepare(t *testing.T) {
 	c := load(t, path)
 	c.Listener.Addr = "127.0.0.1:1080"
 	write(t, path, c)
-	command(t, true, "bash", "/src/install.sh", "--config", path, "--archive", "/artifacts/gost_3.3.0_linux_amd64.tar.gz", "--checksums", "/artifacts/checksums-3.3.0.txt")
+	command(t, true, "bash", "/src/install.sh", "--non-interactive", "--setup-host", "localhost", "--config", path, "--archive", "/artifacts/gost_3.3.0_linux_amd64.tar.gz", "--checksums", "/artifacts/checksums-3.3.0.txt")
 	t.Log("PASS Bash installer and boot preparation")
 }
 func TestBootVerify(t *testing.T) {
@@ -414,7 +416,7 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatal(e)
 	}
 	paths := doc["paths"].(map[string]any)
-	for _, p := range []string{"/config", "/status", "/profiles", "/nodes", "/active-profile", "/config/validate", "/profiles/{name}/probe", "/service/start", "/service/stop", "/service/restart", "/rollback", "/logs"} {
+	for _, p := range []string{"/config", "/status", "/profiles", "/nodes", "/active-profile", "/config/validate", "/profiles/{name}/probe", "/service/start", "/service/stop", "/service/restart", "/rollback", "/logs", "/auth/initialize", "/auth/login", "/auth/password", "/setup", "/tls/setup", "/anytls/setup", "/setup/jobs/{id}"} {
 		if paths[p] == nil {
 			t.Fatal("missing OpenAPI operation", p)
 		}

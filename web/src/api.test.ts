@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { APIError, request } from './api'
 afterEach(() => vi.unstubAllGlobals())
 describe('API transport', () => {
-  it('sends only bearer auth and a quoted revision, with a JSON body', async () => {
+  it('sends CSRF and same-origin cookies and a quoted revision, with a JSON body', async () => {
     const fetch = vi
       .fn()
       .mockResolvedValue({ ok: true, json: async () => ({ data: {}, revision: 'r2' }) })
@@ -12,8 +12,9 @@ describe('API transport', () => {
     const [url, init] = fetch.mock.calls[0]!
     expect(url).toBe('/api/v1/config')
     expect(init.headers['If-Match']).toBe('"r1"')
-    expect(init.headers.Authorization).toBe('Bearer memory-only-token')
-    expect(init.credentials).toBe('omit')
+    expect(init.headers.Authorization).toBeUndefined()
+    expect(init.headers['X-CSRF-Token']).toBe('memory-only-token')
+    expect(init.credentials).toBe('same-origin')
     expect(init.body).toBe('{"activeProfile":"office"}')
   })
   it('preserves revision conflict details and never retries mutations', async () => {

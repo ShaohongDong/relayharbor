@@ -38,6 +38,7 @@ func Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 }
 
 type Manager struct {
+	SetupJob    string
 	P           Paths
 	Exec        Runner
 	Self        string

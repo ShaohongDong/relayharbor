@@ -51,7 +51,10 @@ wait_systemd() {
     docker logs "${test_container}" >&2
     return 1
 }
-for spec in ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim; do
+read -r -a system_specs <<< "${GOST_TEST_SYSTEM_SPECS-ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim}"
+run_system() (
+    spec=$1
+    trap cleanup EXIT
     image="gost-deploy-go-test:${spec//[:.]/-}"
     test_container="gost-deploy-go-test-${spec//[:.]/-}-$$"
     log="test-results/${spec//[:.]/-}.log"
@@ -88,9 +91,17 @@ for spec in ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim
     cat "${log}"
     cleanup; test_container=''
     echo "PASS ${spec} amd64 systemd integration"
-done
-for spec in ubuntu:24.04 debian:12-slim; do
+)
+
+read -r -a arm_specs <<< "${GOST_TEST_ARM_SPECS-ubuntu:24.04 debian:12-slim}"
+run_arm() (
+    # QEMU protocol processes are CPU intensive; serialize emulator environments
+    # while the native/systemd environments remain parallel.
+    exec 9> .cache/arm-qemu.lock
+    flock 9
+    spec=$1
     image="gost-deploy-go-test:${spec//[:.]/-}"
+    docker build --build-arg "BASE=${spec}" --build-arg "http_proxy=${GOST_TEST_APT_PROXY:-}" --build-arg "https_proxy=${GOST_TEST_APT_PROXY:-}" -f tests/systemd.Dockerfile -t "${image}" . >"test-results/${spec//[:.]/-}-arm64.build" 2>&1
     docker run --rm \
         -e GOST_TEST_REAL=1 -e GOST_TEST_ARCH=arm64 -e GOST_TEST_QEMU=/qemu-aarch64-static -e QEMU_LD_PREFIX=/usr/aarch64-linux-gnu \
         -e GOST_ARCHIVE=/artifacts/gost_3.3.0_linux_arm64.tar.gz \
@@ -113,5 +124,32 @@ for spec in ubuntu:24.04 debian:12-slim; do
         -v "${qemu_bin}:/qemu-aarch64-static:ro" "${image}" \
         /qemu-aarch64-static /fixtures/lego-arm64 --version \
         | tee -a "test-results/${spec//[:.]/-}-arm64-qemu.log"
+)
+
+# Workers share immutable fixtures but have separate containers and logs.
+# Default four concurrent environments; set GOST_TEST_JOBS=1 for serial diagnostics.
+test_jobs=${GOST_TEST_JOBS:-4}
+if [[ ! ${test_jobs} =~ ^[1-9][0-9]*$ ]] || ((test_jobs > 16)); then echo 'GOST_TEST_JOBS must be 1–16' >&2; exit 1; fi
+worker_pids=()
+campaign_failed=false
+wait_slot() {
+    if ((${#worker_pids[@]} >= test_jobs)); then
+        if ! wait "${worker_pids[0]}"; then campaign_failed=true; fi
+        worker_pids=("${worker_pids[@]:1}")
+    fi
+}
+for spec in "${system_specs[@]}"; do
+    run_system "${spec}" &
+    worker_pids+=("$!")
+    wait_slot
 done
+for spec in "${arm_specs[@]}"; do
+    run_arm "${spec}" &
+    worker_pids+=("$!")
+    wait_slot
+done
+for worker_pid in "${worker_pids[@]}"; do
+    if ! wait "${worker_pid}"; then campaign_failed=true; fi
+done
+if [[ ${campaign_failed} == true ]]; then echo 'Acceptance environment failed; inspect test-results logs.' >&2; exit 1; fi
 .cache/test-bin/testctl evidence finish

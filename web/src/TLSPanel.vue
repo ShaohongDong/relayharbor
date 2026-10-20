@@ -119,7 +119,8 @@ onBeforeUnmount(() => {
         }}，关闭页面不影响后台任务。
       </p>
       <p class="muted">
-        每 12 小时自动检查续期；未到续期时间不会重复签发。域名修改与停用通过服务器 CLI 完成。
+        每 12 小时自动检查续期；未到续期时间不会重复签发。域名修改可在部署设置完成，停用通过服务器
+        CLI 完成。
       </p>
       <div class="button-row">
         <el-button
@@ -140,7 +141,9 @@ onBeforeUnmount(() => {
       </p>
       <pre class="config-preview">
 sudo gostctl tls setup --domain panel.example.com --email admin@example.com --accept-tos</pre>
-      <p class="muted">首次部署、域名修改及停用需通过 CLI；自动续期无需保持页面打开。</p>
+      <p class="muted">
+        首次部署及域名修改请打开“部署设置”；也可使用上方 CLI。自动续期无需保持页面打开。
+      </p>
     </template>
     <p v-else-if="loading" class="muted">正在读取 HTTPS 状态…</p>
   </section>

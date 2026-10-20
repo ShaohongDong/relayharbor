@@ -70,7 +70,7 @@ func request(t *testing.T, url, method, path, token, rev string, body []byte) (i
 	if e != nil {
 		t.Fatal(e)
 	}
-	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("X-Test-Local", token)
 	r.Header.Set("Content-Type", "application/json")
 	if rev != "" {
 		r.Header.Set("If-Match", `"`+rev+`"`)
@@ -93,7 +93,7 @@ func request(t *testing.T, url, method, path, token, rev string, body []byte) (i
 func TestAPIContract(t *testing.T) {
 	f := newFake()
 	f.c.Profiles = append(f.c.Profiles, config.Profile{Name: "second", Type: "direct"})
-	server := httptest.NewServer(&Handler{f, "token"})
+	server := httptest.NewServer(localTestHandler(f, "token"))
 	defer server.Close()
 	status, v, h := request(t, server.URL, "GET", "/config", "token", "", nil)
 	if status != 200 || h.Get("ETag") != `"r1"` || bytes.Contains(config.Bytes(v), []byte(f.c.Listener.Users[0].Password)) {
@@ -118,7 +118,7 @@ func TestAPIContract(t *testing.T) {
 
 func TestTLSContract(t *testing.T) {
 	f := newFake()
-	server := httptest.NewServer(&Handler{f, "token"})
+	server := httptest.NewServer(localTestHandler(f, "token"))
 	defer server.Close()
 	if s, _, _ := request(t, server.URL, "GET", "/tls", "bad", "", nil); s != 401 {
 		t.Fatal("TLS auth", s)
@@ -150,7 +150,7 @@ func TestTLSContract(t *testing.T) {
 }
 func TestValidateAndMalformed(t *testing.T) {
 	f := newFake()
-	server := httptest.NewServer(&Handler{f, "token"})
+	server := httptest.NewServer(localTestHandler(f, "token"))
 	defer server.Close()
 	s, _, _ := request(t, server.URL, "POST", "/config/validate", "token", "", config.Bytes(f.c.Redacted()))
 	if s != 200 {
@@ -172,7 +172,7 @@ func TestValidateAndMalformed(t *testing.T) {
 func TestConcurrentRevision(t *testing.T) {
 	f := newFake()
 	f.c.Profiles = append(f.c.Profiles, config.Profile{Name: "second", Type: "direct"})
-	server := httptest.NewServer(&Handler{f, "token"})
+	server := httptest.NewServer(localTestHandler(f, "token"))
 	defer server.Close()
 	codes := make(chan int, 2)
 	for i := 0; i < 2; i++ {
@@ -197,7 +197,7 @@ func TestShutdownWaitsForMutation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- ServeListener(ctx, l, &Handler{f, "token"}) }()
+	go func() { done <- ServeListener(ctx, l, localTestHandler(f, "token")) }()
 	response := make(chan int, 1)
 	go func() {
 		s, _, _ := request(t, "http://"+l.Addr().String(), "PUT", "/active-profile", "token", "r1", []byte(`{"name":"second"}`))
@@ -221,7 +221,7 @@ func TestShutdownWaitsForMutation(t *testing.T) {
 
 func TestOperationsContract(t *testing.T) {
 	f := newFake()
-	server := httptest.NewServer(&Handler{f, "token"})
+	server := httptest.NewServer(localTestHandler(f, "token"))
 	defer server.Close()
 	for _, path := range []string{"/service/start", "/service/stop", "/service/restart", "/rollback"} {
 		for _, tt := range []struct {

@@ -8,6 +8,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     ...devices['Desktop Chrome'],
+    ignoreHTTPSErrors: true,
     channel: process.env.PLAYWRIGHT_CHANNEL,
     baseURL: process.env.GOST_WEB_URL ?? 'http://127.0.0.1:5173',
     trace: 'off',

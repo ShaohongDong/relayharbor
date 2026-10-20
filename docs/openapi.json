@@ -2,12 +2,17 @@
   "openapi": "3.0.3",
   "info": {
     "title": "RelayHarbor local management API",
-    "version": "1.0.0",
-    "description": "Authenticated loopback API, optionally exposed over HTTPS by managed nginx. No CORS. Proxy secrets are write-only; AnyTLS credentials require an explicit authenticated operation. AnyTLS has an independent revision. No install/upgrade/uninstall or certificate setup HTTP endpoints."
+    "version": "2.0.0",
+    "description": "Password-authenticated HTTPS management API with Secure HttpOnly SameSite=Strict sessions and CSRF protection. Root CLI uses a peer-checked Unix socket. Bearer management tokens are no longer accepted. Setup operations run as persistent background jobs. AnyTLS retains independent revisions."
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:18080/api/v1"
+      "url": "https://{host}:18443/api/v1",
+      "variables": {
+        "host": {
+          "default": "localhost"
+        }
+      }
     },
     {
       "url": "https://{domain}/api/v1",
@@ -21,7 +26,7 @@
   ],
   "security": [
     {
-      "bearerAuth": []
+      "sessionAuth": []
     }
   ],
   "paths": {
@@ -70,7 +75,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -150,7 +155,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -250,7 +255,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -327,7 +332,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -402,7 +407,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -461,6 +466,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
@@ -521,7 +542,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -560,7 +581,25 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/active-profile": {
@@ -608,7 +647,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -676,6 +715,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
@@ -728,7 +783,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -772,6 +827,22 @@
           {
             "in": "path",
             "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
             "required": true,
             "schema": {
               "type": "string"
@@ -825,7 +896,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -886,6 +957,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
@@ -935,7 +1022,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -996,6 +1083,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
@@ -1045,7 +1148,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -1106,6 +1209,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
@@ -1155,7 +1274,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -1216,6 +1335,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
@@ -1265,7 +1400,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -1354,7 +1489,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -1449,7 +1584,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -1510,6 +1645,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "description": "Returns immediately after queueing a systemd task; poll GET /tls for completion. Keeps the proxy configuration revision unchanged. A concurrent task returns 409 tls_busy. Renewal does not force early issuance."
@@ -1578,7 +1729,7 @@
             }
           },
           "401": {
-            "description": "Invalid Bearer token",
+            "description": "Missing or expired session",
             "content": {
               "application/json": {
                 "schema": {
@@ -1639,6 +1790,22 @@
               "type": "string"
             },
             "description": "Quoted revision from GET /config ETag"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "description": "Returns immediately after queueing a systemd task; poll GET /tls for completion. Keeps the proxy configuration revision unchanged. A concurrent task returns 409 tls_busy. Renewal does not force early issuance."
@@ -1683,7 +1850,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -1710,6 +1877,22 @@
               "type": "string"
             },
             "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1760,7 +1943,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -1787,6 +1970,22 @@
               "type": "string"
             },
             "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1837,7 +2036,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -1864,6 +2063,22 @@
               "type": "string"
             },
             "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1933,7 +2148,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -1964,6 +2179,22 @@
           {
             "name": "id",
             "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
             "required": true,
             "schema": {
               "type": "string"
@@ -2026,7 +2257,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2061,6 +2292,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2111,7 +2358,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2146,6 +2393,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2196,7 +2459,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2231,6 +2494,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2281,7 +2560,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2316,6 +2595,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2366,7 +2661,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2401,6 +2696,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2451,7 +2762,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2482,6 +2793,22 @@
           {
             "name": "id",
             "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
             "required": true,
             "schema": {
               "type": "string"
@@ -2536,7 +2863,7 @@
             "description": "Invalid request or operation failed"
           },
           "401": {
-            "description": "Invalid management Bearer token"
+            "description": "Missing or expired session"
           },
           "404": {
             "description": "Not found or disabled user"
@@ -2637,13 +2964,812 @@
           }
         }
       }
+    },
+    "/auth/status": {
+      "get": {
+        "summary": "Read administrator initialization status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/initialize": {
+      "post": {
+        "summary": "Consume one-time code; set password and session",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "code",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Password login; returns csrf and sets session cookie",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "summary": "Read current session csrf",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Revoke current session",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/auth/password": {
+      "post": {
+        "summary": "Change password and revoke all sessions",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "oldPassword": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "oldPassword",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/setup": {
+      "get": {
+        "summary": "Read completion, URL, handoff deadline and latest job",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        }
+      }
+    },
+    "/setup/complete": {
+      "post": {
+        "summary": "Complete basic or full setup",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          },
+          "428": {
+            "description": "Missing revision"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/setup/credentials": {
+      "post": {
+        "summary": "Explicitly reveal SOCKS listener credentials",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          },
+          "428": {
+            "description": "Missing revision"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/tls/setup": {
+      "post": {
+        "summary": "Configure HTTPS in background",
+        "responses": {
+          "202": {
+            "description": "Accepted job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SetupJob"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          },
+          "428": {
+            "description": "Missing revision"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "domain": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "acceptTos": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "domain",
+                  "email",
+                  "acceptTos"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            }
+          }
+        ]
+      }
+    },
+    "/anytls/setup": {
+      "post": {
+        "summary": "Initialize AnyTLS after HTTPS",
+        "responses": {
+          "202": {
+            "description": "Accepted job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SetupJob"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          },
+          "428": {
+            "description": "Missing revision"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            }
+          }
+        ]
+      }
+    },
+    "/setup/jobs/{id}": {
+      "get": {
+        "summary": "Read persisted job result",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SetupJob"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "409": {
+            "description": "Revision or operation conflict"
+          },
+          "429": {
+            "description": "Authentication limit"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
     "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
+      "sessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-relayharbor"
       }
     },
     "schemas": {
@@ -3200,6 +4326,58 @@
           },
           "provider": {
             "type": "string"
+          }
+        }
+      },
+      "SetupJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "tls",
+              "anytls"
+            ]
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "interrupted"
+            ]
+          },
+          "step": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "requestHash": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "acceptTos": {
+            "type": "boolean"
           }
         }
       }

@@ -99,11 +99,27 @@ async function setup(page: Page) {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request(),
       path = new URL(request.url()).pathname.slice(7)
-    if (request.headers().authorization !== 'Bearer test-token') {
+    if (path === '/auth/status') {
+      await route.fulfill({ json: { data: { initialized: true }, revision: '' } })
+      return
+    }
+    if (path === '/auth/session') {
       await route.fulfill({
         status: 401,
-        json: { error: { code: 'unauthorized', message: '无效 token' } },
+        json: { error: { code: 'unauthorized', message: '登录' } },
       })
+      return
+    }
+    if (path === '/auth/login') {
+      await route.fulfill({ json: { data: { csrf: 'test-token' }, revision: '' } })
+      return
+    }
+    if (path === '/auth/logout') {
+      await route.fulfill({ json: { data: {}, revision: '' } })
+      return
+    }
+    if (path === '/setup') {
+      await route.fulfill({ json: { data: { completed: true }, revision: 'r1' } })
       return
     }
     const body = request.postDataJSON()
@@ -169,8 +185,8 @@ async function setup(page: Page) {
     })
   })
   await page.goto('/')
-  await page.getByLabel('管理 token', { exact: true }).fill('test-token')
-  await page.getByRole('button', { name: '连接控制台' }).click()
+  await page.getByLabel('管理员密码', { exact: true }).fill('test-token')
+  await page.getByRole('button', { name: '登录控制台' }).click()
   await expect(page.getByRole('button', { name: '管理代理池' })).toBeVisible()
   return {
     calls,
@@ -206,7 +222,7 @@ test('table filtering, editing, redaction and quoted revision', async ({ page })
     ),
   ).toBe(0)
   await page.getByRole('button', { name: '断开认证' }).click()
-  await expect(page.getByRole('button', { name: '连接控制台' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '登录控制台' })).toBeVisible()
 })
 test('revision conflicts preserve draft and disable another write', async ({ page }) => {
   const state = await setup(page)
@@ -271,7 +287,8 @@ test('HTTPS setup hint, background renewal and failure states', async ({ page })
   await expect(panel.getByRole('button', { name: '检查续期', exact: true })).toBeDisabled()
   expect(mutations).toHaveLength(1)
   expect(mutations[0].headers['if-match']).toBe('"r1"')
-  expect(mutations[0].headers.authorization).toBe('Bearer test-token')
+  expect(mutations[0].headers['x-csrf-token']).toBe('test-token')
+  expect(mutations[0].headers.authorization).toBeUndefined()
   expect(mutations[0].body).toEqual({})
   tls = {
     ...tls,
@@ -292,4 +309,64 @@ test('HTTPS setup hint, background renewal and failure states', async ({ page })
   tls = { ...tls, timerActive: true, expiring: true }
   await panel.getByRole('button', { name: '刷新 HTTPS 状态' }).click()
   await expect(panel).toContainText('证书将在 14 天内到期或已过期')
+})
+
+test('first visit initializes password, restores setup and can finish in basic mode', async ({
+  page,
+}) => {
+  await setup(page)
+  let initialized = false,
+    completed = false
+  const passwords: unknown[] = []
+  await page.route('**/api/v1/auth/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/status')) {
+      await route.fulfill({ json: { data: { initialized }, revision: '' } })
+      return
+    }
+    if (path.endsWith('/initialize')) {
+      passwords.push(route.request().postDataJSON())
+      initialized = true
+      await route.fulfill({ json: { data: { csrf: 'test-token' }, revision: '' } })
+      return
+    }
+    await route.fulfill({ json: { data: { csrf: 'test-token' }, revision: '' } })
+  })
+  await page.route('**/api/v1/setup**', async (route) => {
+    if (route.request().method() === 'POST') completed = true
+    await route.fulfill({
+      json: {
+        data: {
+          completed,
+          url: 'https://127.0.0.1:18443',
+          temporaryURL: 'https://127.0.0.1:18443',
+        },
+        revision: 'r1',
+      },
+    })
+  })
+  await page.route('**/api/v1/tls', (route) =>
+    route.fulfill({ json: { data: { enabled: false }, revision: 'r1' } }),
+  )
+  await page.route('**/api/v1/anytls', (route) =>
+    route.fulfill({ json: { data: { configured: false }, revision: 'unconfigured' } }),
+  )
+  await page.reload()
+  await page.getByLabel('一次性初始化码', { exact: true }).fill('one-time-code')
+  await page.getByLabel('管理员密码', { exact: true }).fill('new administrator password')
+  await page.getByLabel('确认密码', { exact: true }).fill('new administrator password')
+  await page.getByRole('button', { name: '设置密码并继续' }).click()
+  await expect(page.getByRole('region', { name: '部署向导' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '初始化 AnyTLS', exact: true })).toBeDisabled()
+  await page.reload()
+  await expect(page.getByRole('region', { name: '部署向导' })).toBeVisible()
+  expect(passwords).toHaveLength(1)
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(
+    'new administrator password',
+  )
+  await page.getByRole('button', { name: '进入控制台', exact: true }).click()
+  await expect(page.getByRole('region', { name: '部署向导' })).not.toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('button', { name: '管理代理池', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '部署向导' })).not.toBeVisible()
 })

@@ -153,6 +153,9 @@ func (m *Manager) AnyTLS(ctx context.Context, op string, req AnyTLSRequest, expe
 				return e
 			}
 			if op != "status" && op != "credentials" {
+				if e := m.SetupBusy(); e != nil {
+					return e
+				}
 				if busy, e := m.tlsOperation(ctx); e != nil {
 					return e
 				} else if busy != "" {
@@ -185,7 +188,7 @@ func (m *Manager) AnyTLS(ctx context.Context, op string, req AnyTLSRequest, expe
 				return ErrAnyTLSRevision
 			}
 			if s == nil {
-				return errors.New("请先执行 gostctl anytls setup")
+				return errors.New("请先从部署设置初始化 AnyTLS")
 			}
 			if e = m.verifyAnyTLS(ctx, s); e != nil {
 				return e
@@ -244,6 +247,9 @@ func (m *Manager) verifyAnyTLS(ctx context.Context, s *AnyTLSState) error {
 }
 
 func (m *Manager) AnyTLSSetup(ctx context.Context, archive string) error {
+	if e := m.SetupBusy(); e != nil {
+		return e
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	return m.Locked(func() error {
@@ -535,7 +541,10 @@ func (m *Manager) changeAnyTLS(ctx context.Context, core *State, s *AnyTLSState,
 		if e != nil {
 			return e
 		}
-		for _, addr := range []string{managed.Listener.Addr, core.Runtime.Gateway, "127.0.0.1:18080"} {
+		for _, addr := range []string{managed.Listener.Addr, core.Runtime.Gateway, "127.0.0.1:18080", m.reservedAccessAddress()} {
+			if addr == "" {
+				continue
+			}
 			_, p, e := net.SplitHostPort(addr)
 			if e != nil {
 				return e

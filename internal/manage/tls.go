@@ -493,6 +493,9 @@ func (m *Manager) writeTLSSite(c *TLSConfig, text string) error {
 
 // TLSSetup manages only a dedicated host, and never takes over an existing nginx installation.
 func (m *Manager) TLSSetup(ctx context.Context, o TLSOptions) error {
+	if e := m.SetupBusy(); e != nil {
+		return e
+	}
 	if e := ValidateTLSOptions(o); e != nil {
 		return e
 	}
@@ -946,6 +949,9 @@ func (m *Manager) TLSStatus(ctx context.Context) (TLSStatus, error) {
 }
 
 func (m *Manager) TLSStart(ctx context.Context, op string) error {
+	if e := m.SetupBusy(); e != nil {
+		return e
+	}
 	if op != "renew" && op != "reload" {
 		return errors.New("不支持的 HTTPS 操作")
 	}
@@ -1073,6 +1079,9 @@ func (m *Manager) verifyTLSUnits(ctx context.Context) error {
 
 // Manager replacement and uninstall share this lock with all certificate work.
 func (m *Manager) tlsMaintenance(ctx context.Context, fn func() error) error {
+	if e := m.SetupBusy(); e != nil {
+		return e
+	}
 	c, e := m.loadTLS()
 	if e != nil {
 		return e

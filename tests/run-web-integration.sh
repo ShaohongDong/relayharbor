@@ -11,10 +11,10 @@ mkdir -p test-results
 web_tmp=$(mktemp -d "${repo_dir}/.cache/web-browser.XXXXXX")
 web_pid=''
 web_port=$(docker port "${test_container}" 18081/tcp)
-web_url="http://${web_port}"
+web_url="https://${web_port}"
 cleanup() {
     if [[ -f ${web_tmp}/token ]]; then
-        GOST_WEB_URL="${web_url}" GOST_WEB_TOKEN_FILE="${web_tmp}/token" node --input-type=module - <<'JS' || true
+        GOST_WEB_URL="${web_url}" GOST_WEB_TOKEN_FILE="${web_tmp}/token" NODE_TLS_REJECT_UNAUTHORIZED=0 node --input-type=module - <<'JS' || true
 import fs from 'node:fs';
 await fetch(process.env.GOST_WEB_URL+'/_fixture/done', {method:'POST',headers:{Authorization:'Bearer '+fs.readFileSync(process.env.GOST_WEB_TOKEN_FILE,'utf8').trim()}});
 JS
@@ -35,15 +35,15 @@ docker exec -e GOST_WEB_TEST=1 -e GOST_ARCHIVE=/artifacts/gost_3.3.0_linux_amd64
 web_pid=$!
 web_ready=false
 for ((attempt=0; attempt<90; attempt++)); do
-    if curl -fsS "${web_url}/" >/dev/null 2>&1; then web_ready=true; break; fi
+    if curl -kfsS "${web_url}/" >/dev/null 2>&1; then web_ready=true; break; fi
     if ! kill -0 "${web_pid}" 2>/dev/null; then cat test-results/browser-systemd.log; exit 1; fi
     sleep 1
 done
 if [[ ${web_ready} != true ]]; then cat test-results/browser-systemd.log; exit 1; fi
-docker exec "${test_container}" cat /var/lib/gost-deploy/api-token >"${web_tmp}/token"
+docker exec "${test_container}" cat /var/lib/gost-deploy/browser-fixture-secret >"${web_tmp}/token"
 GOST_WEB_URL="${web_url}" GOST_WEB_TOKEN_FILE="${web_tmp}/token" npm --prefix web run test:e2e -- --project=real | tee test-results/browser-real.log
 # Tell the fixture to finish and verify its exit status, including connection checks.
-GOST_WEB_URL="${web_url}" GOST_WEB_TOKEN_FILE="${web_tmp}/token" node --input-type=module - <<'JS'
+GOST_WEB_URL="${web_url}" GOST_WEB_TOKEN_FILE="${web_tmp}/token" NODE_TLS_REJECT_UNAUTHORIZED=0 node --input-type=module - <<'JS'
 import fs from 'node:fs';
 const r=await fetch(process.env.GOST_WEB_URL+'/_fixture/done',{method:'POST',headers:{Authorization:'Bearer '+fs.readFileSync(process.env.GOST_WEB_TOKEN_FILE,'utf8').trim()}});
 if(!r.ok)process.exit(1);

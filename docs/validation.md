@@ -1,5 +1,24 @@
 # 验证记录
 
+## 一键安装、密码登录与网页部署向导（2026-10-20，Asia/Shanghai）
+
+安装脚本支持独立下载稳定发行包并校验，自动创建默认认证 SOCKS 配置、启动服务并提供自签名 HTTPS 初始化入口。一次性初始化码只保存摘要，管理员密码使用 PBKDF2；浏览器使用 Secure/HttpOnly 会话 Cookie、CSRF 与 Origin 校验，管理 Bearer 已移除。root CLI 使用双向校验 UID 的 Unix socket。网页支持 HTTPS/AnyTLS 后台部署任务、任务恢复、基础模式及密码修改；正式 HTTPS 就绪后五分钟关闭临时入口。新增 tag 发布 workflow，未创建 tag 或实际发布。
+
+| 检查 | 结果与范围 |
+| --- | --- |
+| 最终源码静态检查、Go 全量测试 | `setup-check-final.log`、`setup-go-final.log` 通过；真实协议测试启用，未变更包允许 Go 缓存 |
+| race | `setup-race.log` 全量通过；最后的只读 setup 路由限制及回归测试另由 `setup-api-final-race.log` 通过 |
+| 前端 | Node.js 24 下 9 项单元测试、6 项模拟 API 浏览器测试通过；真实 systemd 浏览器流程 1 项通过并保存 trace |
+| 隔离系统 | Ubuntu 20.04/22.04/24.04、Debian 12/13 的生命周期、独立安装脚本、初始化/密码/会话失效、真实协议、Nginx/Pebble、AnyTLS、续期及重启恢复通过 |
+| ARM64 | Ubuntu 24.04、Debian 12 的 QEMU 8.2.2 真实 GOST/Mihomo/AnyTLS 协议通过；不代表 ARM64 硬件或 systemd 验收 |
+| 发行包 | 最终源码重建 amd64/arm64 包，内外 SHA-256、静态 ELF、包内脚本/文档及 amd64 程序一致性通过 |
+
+集成测试基于 `source-baseline.json` 中的源码快照，绑定产物和各环境日志的记录是 `test-results/setup-integration-evidence.json`。七环境通过后收尾版本与该快照的差异仅为 `internal/api/setup.go` 拒绝对只读 setup 路由写入，以及新增 `internal/api/setup_test.go` 回归测试；最终版本重新执行 Go 全量、API race、静态检查和发行包构建。**没有将该最后修改宣称为完整七环境重新验收。** 最终源码、专项检查与发行包摘要见 `setup-final-evidence.json`。
+
+这不是一次无失败的连续矩阵：早期严格 umask 导致内核缺少执行权限的问题已修复并增加回归；早期 QEMU AnyTLS 曾偶发连接重置，单独三次诊断与后续正式两环境通过，但根因未确认。最终集成快照的 Ubuntu 24 首次因 APT 下载失败退出，第一次补跑在浏览器切换出口时报告连接异常；再次开启 trace 后整条流程通过，期间没有修改这条业务路径，也未放宽断言。浏览器瞬时异常根因仍未确认。失败日志分别保留在 `setup-attempt1/`、`setup-attempt2/`、`setup-attempt3-*.log`；`setup-matrix.log` 原退出失败不改写为成功，Ubuntu 24 成功补跑见 `setup-ubuntu24-trace.log`。
+
+网络下载使用获准的 `127.0.0.1:7890` 代理；隔离容器经临时 Docker bridge 转接访问。未修改宿主代理或 APT 设置。测试使用 Pebble CA，没有进行公网 Let's Encrypt/DNS/防火墙验证；GitHub Actions 仅完成本地 YAML 和内嵌 Bash 校验，没有远端运行或发布。所有源码保持未提交、未推送。
+
 ## RelayHarbor 重命名验证（2026-10-20，Asia/Shanghai）
 
 本地仓库迁移至 `/home/dsh/Desktop/relayharbor`，Go 模块统一为 `github.com/ShaohongDong/relayharbor`，`origin` 拉取与推送地址均为 `git@github.com:ShaohongDong/relayharbor.git`。项目文档、OpenAPI 标题、Vue 页面、前端包名及发行包名称同步更新；Git 历史保留，未提交或推送。`gostctl`、systemd 服务名、安装/状态目录、配置与 API 契约均保持原样。生产 Go 文件的改动逐项核对为模块 import 替换。

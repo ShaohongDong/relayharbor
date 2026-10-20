@@ -24,7 +24,7 @@ func anyTLSAcceptance(t *testing.T, m *manage.Manager, c config.Config, client *
 	t.Helper()
 	t.Setenv("GOST_ARCHIVE", "/artifacts/gost_3.3.0_linux_amd64.tar.gz")
 	ctx := context.Background()
-	tokenPath := "/var/lib/gost-deploy/api-token"
+	tokenPath := "/run/lock/gost-deploy-api.sock"
 	run(t, "anytls", "setup", "--sing-box-archive", "/artifacts/sing-box-1.14.3-linux-amd64.tar.gz")
 	call := func(op string, body any) json.RawMessage {
 		t.Helper()

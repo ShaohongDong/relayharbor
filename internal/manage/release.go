@@ -113,6 +113,9 @@ func Extract(archive, dest string) error {
 			return e
 		}
 		_, e = io.CopyN(out, tr, h.Size)
+		if e == nil {
+			e = out.Chmod(0755)
+		}
 		ce := out.Close()
 		if e != nil {
 			return e
@@ -205,6 +208,9 @@ func (m *Manager) PrepareRelease(ctx context.Context, version, archive, sums str
 	}
 	release := Release{v, arch, dest, hash}
 	if e = m.VerifyRelease(release); e != nil {
+		return Release{}, e
+	}
+	if e = os.Chmod(release.Binary, 0755); e != nil {
 		return Release{}, e
 	}
 	return release, nil

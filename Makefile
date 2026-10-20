@@ -45,6 +45,7 @@ release: web-build
 	  (cd "$$dir/bin" && sha256sum gostctl > SHA256SUMS); \
 	  tar -C dist -czf "$$dir.tar.gz" "$${dir##*/}" || exit; \
 	done
-	cd dist && sha256sum relayharbor_$(VERSION)_linux_*.tar.gz > SHA256SUMS
+	cp install.sh dist/install.sh
+	cd dist && sha256sum relayharbor_$(VERSION)_linux_*.tar.gz install.sh > SHA256SUMS
 clean:
 	rm -rf bin dist

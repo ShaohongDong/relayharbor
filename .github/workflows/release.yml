@@ -1,0 +1,59 @@
+name: publish-release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: version
+    uses: ./.github/workflows/test.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+  publish:
+    needs: [version, verify]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Publish verified attachments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check SHA256SUMS
+          for arch in amd64 arm64; do test -s "relayharbor_${RELEASE_VERSION}_linux_${arch}.tar.gz"; done
+          if gh release view "$TAG" --json isDraft --jq .isDraft > draft-state; then
+            [[ $(cat draft-state) == true ]] || { echo 'Refusing to overwrite a published release'; exit 1; }
+          else
+            gh release create "$TAG" --verify-tag --draft --title "RelayHarbor $TAG" --generate-notes
+          fi
+          gh release upload "$TAG" "relayharbor_${RELEASE_VERSION}_linux_amd64.tar.gz" "relayharbor_${RELEASE_VERSION}_linux_arm64.tar.gz" install.sh SHA256SUMS --clobber
+          mkdir downloaded
+          gh release download "$TAG" --dir downloaded
+          (cd downloaded && sha256sum --check SHA256SUMS)
+          cmp SHA256SUMS downloaded/SHA256SUMS
+          gh release edit "$TAG" --draft=false --latest

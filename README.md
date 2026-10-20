@@ -8,23 +8,35 @@ Go 实现的 Ubuntu/Debian GOST v3 服务管理器，支持认证 SOCKS5 入口�
 
 ## 安装与构建
 
-解压对应架构的发行包，先校验下载包的 `SHA256SUMS`，再执行：
+下载独立安装脚本后运行（需 root）：
 
 ```bash
-./bin/gostctl version
-./bin/gostctl init --output gost.json
-./bin/gostctl check --config gost.json
+curl -fL https://github.com/ShaohongDong/relayharbor/releases/latest/download/install.sh -o install.sh
+sudo bash install.sh
+```
+
+终端向导选择发行版本、访问 IP/域名和管理端口，默认下载最新稳定版、使用 18443。脚本校验发行包和 GOST，自动生成带随机 SOCKS 密码的直连配置并启动服务；目标机不需要构建工具。尚无稳定发行版时会明确报错。
+
+安装结束显示页面地址、证书 SHA-256 指纹和一次性初始化码。浏览器打开 `https://服务器IP:18443/`，核对自签名证书指纹并接受证书提示，输入初始化码设置 12–128 字符的管理员密码。之后所有正常部署步骤均在页面完成：
+
+1. 直接选择基础模式，查看 SOCKS 连接信息并进入控制台；或配置域名、邮箱、接受 Let's Encrypt 条款，申请免费 HTTPS 证书。
+2. 域名 HTTPS 就绪后，在新地址用密码重新登录。原 IP 管理入口五分钟后关闭；跳过域名配置则继续保留自签名 HTTPS。
+3. 从部署设置初始化 AnyTLS，创建客户端用户并复制订阅；代理池在控制台中管理。
+
+需预先放行管理 TCP 18443（或自定义端口）；申请域名证书还需正确 DNS 和 TCP 80/443，代理入口和客户端端口另行放行。工具不修改 DNS、防火墙或云安全组。
+
+```bash
+# 自动化安装；参数中的 IP 必须是浏览器可访问的地址
+sudo bash install.sh --non-interactive --setup-host 203.0.113.10 \
+  --setup-port 18443 --release-version 0.1.0
+# 解压发行包后执行同一个脚本，默认使用包内程序
 sudo ./install.sh --config gost.json
-sudo gostctl status
-```
-
-安装器验证包内 `bin/SHA256SUMS`，补齐 CA 证书和账号管理工具，下载并校验官方 GOST。默认版本另有仓库锁定 SHA-256。离线安装必须同时提供：
-
-```bash
+# 离线 GOST 内核，依赖软件包需预先可用
 sudo ./install.sh --config gost.json \
-  --archive /path/to/gost_3.3.0_linux_amd64.tar.gz \
-  --checksums /path/to/checksums.txt
+  --archive /path/to/gost_3.3.0_linux_amd64.tar.gz --checksums /path/to/checksums.txt
 ```
+
+`--release-version` 是 RelayHarbor 版本，现有 `--version` 仍指定 GOST 版本。可选 `--config` 提供 schemaVersion 2 候选配置；未指定时，新安装自动创建，重复安装复用已有配置。重复安装不重置管理员密码、SOCKS 密码或代理池。尚未设置密码时重新执行安装会生成新的初始化码，使旧码失效。
 
 源码仓库：[ShaohongDong/relayharbor](https://github.com/ShaohongDong/relayharbor)。源码开发使用 Go 1.27.2、Node.js 24 LTS 和 Make：
 
@@ -38,7 +50,7 @@ make test-race
 make release VERSION=0.1.0
 ```
 
-`make release` 在 `dist/` 生成 `relayharbor_<version>_linux_<arch>.tar.gz` 静态程序发行包和 SHA-256 清单（amd64/arm64）。可用 `make GO=/path/to/go build` 指定工具链。CI 生成构建产物，不自动对外发布。
+`make release` 在 `dist/` 生成 `relayharbor_<version>_linux_<arch>.tar.gz` 静态程序发行包和 SHA-256 清单（amd64/arm64）。可用 `make GO=/path/to/go build` 指定工具链。推送 `vX.Y.Z` tag 后，GitHub Actions 并行执行静态、协议、浏览器、五个 systemd 和两个 ARM64 QEMU 环境验证；全部成功才将双架构归档、独立 install.sh 和 SHA256SUMS 发布为 GitHub Release。已有正式版本不会被覆盖，失败的草稿可重试。
 
 这是尚无正式部署的新项目：只接受 `schemaVersion:2` 配置，不导入旧原生 GOST JSON，不迁移 Python 版安装状态。若测试机器残留旧版安装，先使用旧版工具清理，不直接覆盖外部或不支持的资源。
 
@@ -126,7 +138,9 @@ sudo gostctl rollback
 
 ## 管理 API 与 Vue
 
-API 地址为 `http://127.0.0.1:18080/api/v1`，必须携带 `Authorization: Bearer <token>`。随机 token 位于 `/var/lib/gost-deploy/api-token`，权限 `0600`。内置 Vue 控制台与 API 同源，不启用 CORS，不接受查询参数 token，不应把管理 token 放入构建产物。
+浏览器及远程 API 使用管理员密码登录和 HTTPS 会话 Cookie；写请求携带 `X-CSRF-Token` 和匹配的 `Origin`。内置 Vue 控制台与 API 同源，不启用 CORS。Cookie 为 Secure/HttpOnly/SameSite=Strict，最长 12 小时、空闲 30 分钟失效；API 重启后需重新登录。密码与初始化码均不以明文持久化。
+
+本机 CLI 通过权限 0600、校验 root UID 的 `/run/lock/gost-deploy-api.sock` 调用管理 API。原 Bearer 管理 token 已移除；升级成功后删除旧 token 文件，远程脚本需迁移为 `POST /api/v1/auth/login` 获取 Cookie 和 CSRF，再调用既有接口。AnyTLS 订阅凭据不受影响。
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
@@ -158,35 +172,29 @@ make integration
 
 ## Vue 单页面控制台
 
-安装新版发行包后访问 `http://127.0.0.1:18080/`。控制台采用中文浅色紧凑表格，包含“代理池与节点”“入口与认证”“配置预览”“客户端订阅”“服务运维”五个页内标签；代理池和节点在抽屉中编辑。
+安装结束后通过输出的 HTTPS 地址访问，首次输入初始化码设置密码，此后使用管理员密码登录。控制台保持中文单页面布局，“部署设置”可随时重新打开。
 
-在服务器读取认证 token：
+部署设置支持基础模式、域名 HTTPS、AnyTLS 初始化、首个用户创建、查看 SOCKS 凭据和修改管理员密码。长时间下载和证书申请由 systemd 后台任务执行，页面关闭或刷新不会取消；失败显示原因并允许重试，不重复已完成的初始化。
 
-```bash
-sudo cat /var/lib/gost-deploy/api-token
-```
-
-将 token 输入页面即可连接。Token 和未应用配置仅保存在页面内存；刷新页面需要重新认证。关闭或刷新有草稿的页面会提示，断开认证会清除草稿和密码。请勿将 token 写入 URL、前端环境变量或构建产物。
-
-远程服务器通过 SSH 隧道访问，浏览器打开本机 `http://127.0.0.1:18080/`：
+忘记密码时在服务器执行：
 
 ```bash
-ssh -N -L 127.0.0.1:18080:127.0.0.1:18080 user@server
+sudo gostctl auth reset
 ```
 
-若本机端口被占用，可将第一个 `18080` 改为其他端口。管理服务仍只监听服务器回环地址，不启用 CORS；也可启用下述 Nginx 域名 HTTPS 部署。
+此命令撤销所有会话并输出新的初始化码，业务配置和客户端凭据保持不变。初始化码不会进入 URL；密码、CSRF 和业务草稿不写入 localStorage。浏览器页面恢复时可通过已有 Cookie 恢复会话。
 
 配置编辑先保存为页面草稿，点击“校验并应用”才会提交。状态每 5 秒刷新，页面隐藏或操作进行时暂停，刷新不会覆盖草稿。密码留空表示保留原身份的密码；改变 profile 名称、节点 ID、所属池或认证用户名后，需要重新输入相应密码。预览隐藏所有密码。CLI 或其他页面改变配置时，控制台保留草稿并阻止覆盖，需重新加载后编辑。
 
 服务运维支持启动、停止、重启和恢复上一份配置与 GOST 版本；需要中断连接的操作会二次确认。停止转发服务不会停止管理页面。近期日志固定读取两个受管服务的 journal，默认 100 条、最多 500 条/256 KiB、5 秒读取超时；不开放 worker 原始日志，已知受管凭据和认证头会被屏蔽，不对历史任意文本中的未知凭据作识别保证。
 
-新增 API：`POST /service/start`、`POST /service/stop`、`POST /service/restart`、`POST /rollback` 均提交 `{}`，必须带 `If-Match`；`GET /logs?limit=100` 查询近期日志。`/status` 增加脱敏回滚目标摘要。所有接口继续使用 `/api/v1` 前缀和 Bearer 认证。不提供网页在线升级、卸载或多用户登录；HTTPS 访问沿用管理员 Bearer token。
+新增 API：`POST /service/start`、`POST /service/stop`、`POST /service/restart`、`POST /rollback` 均提交 `{}`，必须带 `If-Match`；`GET /logs?limit=100` 查询近期日志。`/status` 增加脱敏回滚目标摘要。所有接口继续使用 `/api/v1` 前缀，使用管理员会话及 CSRF。暂不提供网页在线升级、卸载或多管理员账号。
 
 ### Clash/Mihomo 订阅与 AnyTLS
 
 支持向 **支持 AnyTLS 的 Mihomo 客户端**发布订阅。每个用户或设备有独立密码、订阅 token、TCP 端口及 systemd 实例；客户端只看到一个节点，出站跟随服务端当前 `activeProfile`。首版仅 TCP，不导入外部订阅。普通 Clash 内核不作为兼容目标。
 
-先完成下述 Nginx HTTPS 部署，再执行：
+正常部署在“部署设置”完成 HTTPS 后点击“初始化 AnyTLS”。离线及运维场景仍可使用 CLI：
 
 ```bash
 sudo gostctl anytls setup
@@ -199,12 +207,12 @@ sudo gostctl anytls user credentials --id phone
 
 管理器下载并校验固定版本 sing-box 1.14.3（Linux amd64/arm64，官方归档 SHA-256 锁定在源码），作为独立进程使用；目标机无需额外语言运行时，ARM64 内核使用受支持 Ubuntu/Debian 自带的 glibc。AnyTLS 入口监听 IPv4，域名需有可达的 A 记录。默认从 8443 起分配未占用端口，分配后持久化；需在防火墙及云安全组放行实际分配的 TCP 端口。支持最多 128 个用户，每个启用用户运行一个进程，部署容量应按实际内存和连接数评估。
 
-Vue 单页面的“客户端订阅”标签支持新增、重命名、启停、删除、查看凭据、复制链接及下载配置。首次安装内核使用 CLI。凭据只在显式查看时显示，不写入浏览器持久化存储；通过 HTTPS 页面下载配置。可将完整配置链接导入客户端，或在现有配置的 `proxy-providers` 中使用节点列表链接：
+Vue 单页面的“客户端订阅”标签支持新增、重命名、启停、删除、查看凭据、复制链接及下载配置。首次安装内核从“部署设置”完成，CLI 仍支持离线运维。凭据只在显式查看时显示，不写入浏览器持久化存储；通过 HTTPS 页面下载配置。可将完整配置链接导入客户端，或在现有配置的 `proxy-providers` 中使用节点列表链接：
 
 - `https://DOMAIN/sub/TOKEN/clash.yaml`：完整配置，单节点选择组与 `MATCH` 路由，无自动直连兜底。
 - `https://DOMAIN/sub/TOKEN/proxies.yaml`：仅 `proxies` 节点列表，供现有 Mihomo 配置使用。
 
-订阅包含对应用户的 AnyTLS 密码，应视为凭据保管。token 与管理员 Bearer token 相互独立，不授予管理权限。订阅不缓存，受管 Nginx 不记录订阅路径；HTTP 请求直接拒绝，不重定向含 token 的 URL。节点使用已配置的域名与 SNI，必须校验证书，`udp:false`；服务端也拒绝 UDP。
+订阅包含对应用户的 AnyTLS 密码，应视为凭据保管。订阅 token 与管理员会话相互独立，不授予管理权限。订阅不缓存，受管 Nginx 不记录订阅路径；HTTP 请求直接拒绝，不重定向含 token 的 URL。节点使用已配置的域名与 SNI，必须校验证书，`udp:false`；服务端也拒绝 UDP。
 
 ```bash
 sudo gostctl anytls user rename --id phone --name 新名称
@@ -223,7 +231,7 @@ AnyTLS 状态位于 `/var/lib/gost-deploy/anytls.json`（0600），使用独立 
 
 证书复用现有 lego 续期流程，验证后更新实例证书副本并探测实际提供的证书；热加载失败恢复旧版本并报告失败，不重启全部用户兜底。AnyTLS 启用期间需先停用它，才能停用 HTTPS 或修改域名。管理 API 停止不影响转发；GOST 停止时新代理请求失败，恢复后可重新连接。卸载先停用全部实例，`--purge` 清理受管用户、凭据和内核。
 
-管理接口为 `GET /api/v1/anytls`，以及 `/api/v1/anytls/enable|disable|users`、`/api/v1/anytls/users/{id}/rename|enable|disable|delete|reset-token|reset-password|credentials` 的 POST 操作。所有操作使用管理员 Bearer token；POST 必须携带 **AnyTLS 自身**的 `If-Match`，不使用代理配置 revision。用户列表脱敏，`credentials` 是显式返回秘密的接口。详见 OpenAPI。
+管理接口为 `GET /api/v1/anytls`，以及 `/api/v1/anytls/enable|disable|users`、`/api/v1/anytls/users/{id}/rename|enable|disable|delete|reset-token|reset-password|credentials` 的 POST 操作。所有操作使用管理员会话与 CSRF；POST 必须携带 **AnyTLS 自身**的 `If-Match`，不使用代理配置 revision。用户列表脱敏，`credentials` 是显式返回秘密的接口。详见 OpenAPI。
 
 ### Nginx HTTPS 与免费证书
 
@@ -245,13 +253,13 @@ sudo ./install.sh --config gost.json \
 
 `--accept-tos` 表示接受 [Let's Encrypt 服务条款](https://letsencrypt.org/repository/)。首次发现已有 Nginx 安装、配置或 80/443 被占用时拒绝接管。本工具管理的部署可重复执行；相同 setup 命令也用于失败后重试。改变域名需再次运行 setup，成功签发后切换，失败保留原站点。
 
-浏览器打开 `https://panel.example.com/`，输入现有管理 token。Nginx 终止 TLS，管理服务继续只监听 `127.0.0.1:18080`；证书成功签发前不提供明文管理页面。HTTP-01 验证路径保留在 80 端口，其余请求在启用 HTTPS 后重定向到固定域名。
+浏览器打开 `https://panel.example.com/`，使用管理员密码登录。Nginx 终止 TLS，管理服务继续只监听 `127.0.0.1:18080`；证书成功签发前不提供明文管理页面。HTTP-01 验证路径保留在 80 端口，其余请求在启用 HTTPS 后重定向到固定域名。
 
 证书客户端为固定版本 lego 5.5.2，下载包经过官方清单与仓库锁定 SHA-256 校验。可使用 `--lego-archive FILE --lego-checksums FILE` 提供离线客户端包，amd64/arm64 均有固定校验值；**签发和续期仍需要联网访问 ACME**。这些参数也可与安装参数一起使用。
 
 `gost-deploy-tls-renew.timer` 每 12 小时检查一次，附加最多一小时随机延迟，并在关机错过检查后补执行。是否续期由 lego 根据证书实际有效期及 CA 的 ARI 建议判断；不会每次检查都重新签发。定时任务独立于页面和管理 API，获取证书后验证域名、有效期与密钥匹配，再通过 `nginx -t` 并平滑重载。失败保留原有效证书，下次自动重试；已经获取但尚未部署的证书优先重试部署。
 
-“服务运维”的 HTTPS 卡片展示证书有效期、timer、最近结果及后台任务，支持检查续期和重载。首次配置、域名修改、停用由 CLI 完成：
+“服务运维”的 HTTPS 卡片展示证书有效期、timer、最近结果及后台任务，支持检查续期和重载。首次配置和域名修改可在“部署设置”完成；CLI 同样保留：
 
 ```bash
 sudo gostctl tls renew      # 后台检查续期，不强制提前签发
@@ -263,9 +271,9 @@ sudo journalctl -u gost-deploy-tls-renew -u gost-deploy-tls-reload -n 100 --no-p
 
 管理元数据 `/etc/gost-deploy/tls.json`、ACME 账号与证书 `/var/lib/gost-deploy/tls/` 仅 root 可读。不要手动修改受管站点 `/etc/nginx/conf.d/gost-deploy.conf` 或 systemd units；发现外部修改会拒绝覆盖。管理器升级与卸载遇到正在进行的 TLS 操作会提示稍后重试。
 
-卸载同步停用 HTTPS，`uninstall --purge` 清理本项目证书、账号及受管资源，保留系统 Nginx 软件包。HTTPS 出现问题时仍可通过原 SSH 隧道恢复管理；首次 HTTPS 失败不撤销已成功安装的 GOST。
+卸载同步停用 HTTPS，`uninstall --purge` 清理本项目证书、账号及受管资源，保留系统 Nginx 软件包。HTTPS 出现问题时可使用 root CLI 恢复管理；首次 HTTPS 失败不撤销已成功安装的 GOST，并保留自签名管理入口。
 
-新增 `GET /api/v1/tls`、`POST /api/v1/tls/renew` 和 `POST /api/v1/tls/reload`；POST 提交 `{}` 并携带 `If-Match`，立即返回后台任务已排队，随后查询状态。TLS 操作不改变代理配置 revision；并行操作返回 `409 tls_busy`。API 不提供私钥、域名配置或强制签发操作。
+新增 `GET /api/v1/tls`、`POST /api/v1/tls/renew` 和 `POST /api/v1/tls/reload`；POST 提交 `{}` 并携带 `If-Match`，立即返回后台任务已排队，随后查询状态。TLS 操作不改变代理配置 revision；并行操作返回 `409 tls_busy`。API 不提供私钥或强制签发操作；`POST /api/v1/tls/setup` 支持管理员配置域名，返回可查询的后台任务。
 
 ### 前端开发与构建
 
@@ -282,4 +290,4 @@ make release
 cd web && npm run dev      # Vite 本地开发，代理 /api 到 127.0.0.1:18080
 ```
 
-首次浏览器测试运行 `cd web && npx playwright install --with-deps chromium`。已有 Google Chrome 时可设置 `PLAYWRIGHT_CHANNEL=chrome`。独立运行 Go 命令前先执行 `make web-build` 生成嵌入资源。隔离集成测试通过仅绑定宿主回环地址的测试桥接访问容器内管理服务，模拟 SSH 隧道；生产代码不包含该桥接。
+首次浏览器测试运行 `cd web && npx playwright install --with-deps chromium`。已有 Google Chrome 时可设置 `PLAYWRIGHT_CHANNEL=chrome`。独立运行 Go 命令前先执行 `make web-build` 生成嵌入资源。隔离集成测试通过仅绑定宿主回环地址的测试桥接访问容器内管理服务，验证自签名 HTTPS 与密码会话；生产代码不包含该桥接。

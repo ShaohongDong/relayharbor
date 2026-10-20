@@ -8,10 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 )
 
 func TestPrepareReleaseValidatesCachedPath(t *testing.T) {
+	oldMask := syscall.Umask(0077)
+	defer syscall.Umask(oldMask)
 	for _, cache := range []string{"fresh", "regular", "symlink-inside", "symlink-outside", "tampered"} {
 		t.Run(cache, func(t *testing.T) {
 			m := fixtureManager(t)

@@ -31,7 +31,7 @@ func (f *anyFake) Subscription(_ context.Context, token string, provider bool) (
 }
 func TestAnyTLSAPI(t *testing.T) {
 	f := &anyFake{fake: newFake()}
-	server := httptest.NewServer(&Handler{f, "token"})
+	server := httptest.NewServer(localTestHandler(f, "token"))
 	defer server.Close()
 	for _, tc := range []struct {
 		method, path, token, rev, body string
@@ -59,7 +59,7 @@ func TestAnyTLSAPI(t *testing.T) {
 	}
 }
 func TestSubscriptionTransportAndToken(t *testing.T) {
-	h := &Handler{&anyFake{fake: newFake()}, "admin"}
+	h := localTestHandler(&anyFake{fake: newFake()}, "admin")
 	for _, tc := range []struct {
 		path, proto, remote, method string
 		code                        int

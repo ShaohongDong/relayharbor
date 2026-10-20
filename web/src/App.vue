@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { APIError, request } from './api'
 import TLSPanel from './TLSPanel.vue'
+import AuthGate from './AuthGate.vue'
+import SetupPanel from './SetupPanel.vue'
 import AnyTLSPanel from './AnyTLSPanel.vue'
 import {
   clone,
@@ -18,9 +20,9 @@ import {
 } from './model'
 
 const token = ref(''),
-  tokenInput = ref(''),
   busy = ref(false),
   refreshing = ref(false)
+const setupOpen = ref(false)
 const error = ref(''),
   disconnected = ref(false),
   conflict = ref(false)
@@ -134,7 +136,6 @@ const serviceLabel = computed(() =>
 )
 function disconnect() {
   token.value = ''
-  tokenInput.value = ''
   base.value = undefined
   draft.value = undefined
   status.value = undefined
@@ -199,27 +200,35 @@ async function action(fn: () => Promise<void>, mutation = false) {
     busy.value = false
   }
 }
-async function login() {
+async function login(csrf: string) {
   await action(async () => {
-    token.value = tokenInput.value.trim()
-    tokenInput.value = ''
+    token.value = csrf
     try {
       await load()
+      setupOpen.value = !(await request<{ completed: boolean }>(token.value, '/setup')).data
+        .completed
     } catch (e) {
       disconnect()
       throw e
     }
   })
 }
+async function logout() {
+  try {
+    await request(token.value, '/auth/logout', 'POST', {})
+  } finally {
+    disconnect()
+  }
+}
 async function refresh() {
-  if (!token.value || busy.value || refreshing.value) return
+  if (!token.value || busy.value || refreshing.value || setupOpen.value) return
   refreshing.value = true
   try {
     const s = await request<Status>(token.value, '/status')
     status.value = s.data
     disconnected.value = false
     if (s.revision !== revision.value) {
-      if (dirty.value) conflict.value = true
+      if (dirty.value || profileOpen.value || nodeOpen.value) conflict.value = true
       else await load()
     }
   } catch (e) {
@@ -441,37 +450,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="!base" class="login-shell">
-    <main class="login-card">
-      <div class="brand-mark">R</div>
-      <h1>RelayHarbor 控制台</h1>
-      <p class="muted">代理配置与运行管理</p>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-      <el-form @submit.prevent="login" label-position="top">
-        <el-form-item label="管理 token"
-          ><el-input
-            v-model="tokenInput"
-            aria-label="管理 token"
-            type="password"
-            autocomplete="off"
-            placeholder="输入本机管理 token"
-        /></el-form-item>
-        <el-button
-          native-type="submit"
-          type="primary"
-          size="large"
-          :loading="busy"
-          :disabled="!tokenInput.trim()"
-          class="full"
-          >连接控制台</el-button
-        >
-      </el-form>
-      <p class="hint">仅用于本机或 SSH 隧道访问。Token 只在当前页面内存中保存。</p>
-      <p class="hint">在服务器读取：<code>sudo cat /var/lib/gost-deploy/api-token</code></p>
-    </main>
+  <div v-if="!base">
+    <AuthGate @ready="login" /><el-alert v-if="error" :title="error" type="error" />
   </div>
   <div v-else class="console" v-loading="busy" element-loading-text="操作进行中，请等待确认…">
+    <SetupPanel v-if="setupOpen" :token="token" @done="setupOpen = false" @error="showError" />
     <header class="topbar">
+      <el-button @click="setupOpen = !setupOpen">部署设置</el-button>
       <div class="brand">
         <span class="brand-mark small">R</span><strong>RelayHarbor 控制台</strong>
       </div>
@@ -496,7 +481,7 @@ onBeforeUnmount(() => {
         >GOST {{ status?.version }} · {{ status?.connections ?? 0 }} 个连接</span
       >
       <el-button :disabled="busy || refreshing" @click="refresh">刷新状态</el-button>
-      <el-button :disabled="busy || refreshing" @click="disconnect">断开认证</el-button>
+      <el-button :disabled="busy || refreshing" @click="logout">断开认证</el-button>
     </header>
     <main class="content">
       <el-alert

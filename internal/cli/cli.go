@@ -41,7 +41,7 @@ func read(path string) (config.Config, error) {
 func Main(ctx context.Context, args []string, out io.Writer) error {
 	for _, a := range args {
 		if a == "--help" || a == "-h" {
-			fmt.Fprintln(out, "用法：gostctl COMMAND [OPTIONS]\n命令：init check install configure profile upgrade rollback start stop restart status logs uninstall version tls anytls\nanytls: setup [--sing-box-archive FILE] | status | enable | disable\nanytls user: add --id ID --name NAME [--port PORT] | rename --id ID --name NAME | enable/disable/delete/reset-token/reset-password/credentials --id ID\ninit: --output FILE [--listen IP:PORT] [--udp]\ncheck/configure/install: --config FILE\ninstall/upgrade: --version VERSION [--archive FILE --checksums FILE]\nprofile: list | use NAME | probe NAME\ntls: setup --domain DOMAIN --email EMAIL --accept-tos [--lego-archive FILE --lego-checksums FILE] | status | renew | reload | disable\ninstall: [--domain DOMAIN --email EMAIL --accept-tos]\nuninstall: [--purge]    logs: [--follow]")
+			fmt.Fprintln(out, "用法：gostctl COMMAND [OPTIONS]\n命令：init check install configure profile upgrade rollback start stop restart status logs uninstall version tls anytls auth\nauth: reset\nanytls: setup [--sing-box-archive FILE] | status | enable | disable\nanytls user: add --id ID --name NAME [--port PORT] | rename --id ID --name NAME | enable/disable/delete/reset-token/reset-password/credentials --id ID\ninit: --output FILE [--listen IP:PORT] [--udp]\ncheck/configure: --config FILE; install: [--config FILE] [--setup-host HOST] [--setup-port PORT]\ninstall/upgrade: --version VERSION [--archive FILE --checksums FILE]\nprofile: list | use NAME | probe NAME\ntls: setup --domain DOMAIN --email EMAIL --accept-tos [--lego-archive FILE --lego-checksums FILE] | status | renew | reload | disable\ninstall: [--domain DOMAIN --email EMAIL --accept-tos]\nuninstall: [--purge]    logs: [--follow]")
 			return nil
 		}
 	}
@@ -51,6 +51,29 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 	name := args[0]
 	args = args[1:]
 	m := manage.New()
+	if name == "_setup" {
+		if e := manage.RequireHost(); e != nil {
+			return e
+		}
+		if len(args) != 1 {
+			return errors.New("需要部署任务 ID")
+		}
+		return m.RunSetup(ctx, args[0])
+	}
+	if name == "auth" {
+		if e := manage.RequireHost(); e != nil {
+			return e
+		}
+		if len(args) != 1 || args[0] != "reset" {
+			return errors.New("用法：gostctl auth reset")
+		}
+		code, e := m.ResetAuth(ctx)
+		if e != nil {
+			return e
+		}
+		fmt.Fprintf(out, "初始化地址：%s\n一次性初始化码：%s\n", m.SetupAddress(), code)
+		return nil
+	}
 	if name == "_anytls" {
 		if len(args) != 1 {
 			return errors.New("内部 AnyTLS 命令需要用户 ID")
@@ -127,6 +150,8 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 	}
 	var path, version, archive, sums string
 	var follow, purge bool
+	var setupHost string
+	var setupPort int
 	var tlsOptions manage.TLSOptions
 	f, e := parse(name, args, func(f *flag.FlagSet) {
 		switch name {
@@ -139,6 +164,8 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 			if name == "install" {
 				f.StringVar(&path, "config", "", "")
 				tlsFlags(f, &tlsOptions)
+				f.StringVar(&setupHost, "setup-host", "", "")
+				f.IntVar(&setupPort, "setup-port", 0, "")
 			}
 		case "logs":
 			f.BoolVar(&follow, "follow", false, "")
@@ -176,24 +203,24 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 			if e != nil {
 				return e
 			}
-			_, rev, e = api.Client(ctx, m.P.Token, "GET", "/config", nil, "")
+			_, rev, e = api.Client(ctx, m.APISocket(), "GET", "/config", nil, "")
 			if e != nil {
 				return e
 			}
-			data, rev, e = api.Client(ctx, m.P.Token, "PUT", "/config", json.RawMessage(body), rev)
+			data, rev, e = api.Client(ctx, m.APISocket(), "PUT", "/config", json.RawMessage(body), rev)
 			if e != nil {
 				return e
 			}
 		} else {
 			a := f.Args()
 			if len(a) == 1 && a[0] == "list" {
-				data, rev, e = api.Client(ctx, m.P.Token, "GET", "/profiles", nil, "")
+				data, rev, e = api.Client(ctx, m.APISocket(), "GET", "/profiles", nil, "")
 			} else if len(a) == 2 && a[0] == "probe" {
-				data, rev, e = api.Client(ctx, m.P.Token, "POST", api.ProfilePath(a[1]), map[string]any{}, "")
+				data, rev, e = api.Client(ctx, m.APISocket(), "POST", api.ProfilePath(a[1]), map[string]any{}, "")
 			} else if len(a) == 2 && a[0] == "use" {
-				_, rev, e = api.Client(ctx, m.P.Token, "GET", "/config", nil, "")
+				_, rev, e = api.Client(ctx, m.APISocket(), "GET", "/config", nil, "")
 				if e == nil {
-					data, rev, e = api.Client(ctx, m.P.Token, "PUT", "/active-profile", map[string]string{"name": a[1]}, rev)
+					data, rev, e = api.Client(ctx, m.APISocket(), "PUT", "/active-profile", map[string]string{"name": a[1]}, rev)
 				}
 			} else {
 				return errors.New("用法：profile list|use NAME|probe NAME")
@@ -207,7 +234,27 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 	}
 	if name == "install" {
 		if path == "" {
-			return errors.New("install 需要 --config")
+			path = m.P.Manifest
+			if _, e := os.Stat(path); os.IsNotExist(e) {
+				f, e := os.CreateTemp("", "relayharbor-config-*")
+				if e != nil {
+					return e
+				}
+				path = f.Name()
+				defer os.Remove(path)
+				if e = f.Chmod(0600); e != nil {
+					f.Close()
+					return e
+				}
+				_, e = f.Write(config.Bytes(config.Initial("0.0.0.0:1080", false)))
+				ce := f.Close()
+				if e != nil {
+					return e
+				}
+				if ce != nil {
+					return ce
+				}
+			}
 		}
 		withTLS := tlsOptions.Domain != "" || tlsOptions.Email != "" || tlsOptions.AcceptTOS || tlsOptions.Archive != "" || tlsOptions.Checksums != ""
 		if withTLS {
@@ -231,7 +278,14 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 				return fmt.Errorf("GOST 已安装；HTTPS 部署失败，可通过本机或 SSH 隧道恢复：%w", e)
 			}
 		}
-		fmt.Fprintln(out, "操作完成。")
+		code, fingerprint, e := m.ConfigureAccess(ctx, setupHost, setupPort)
+		if e != nil {
+			return fmt.Errorf("核心服务已安装，管理入口配置失败，可重新执行安装：%w", e)
+		}
+		fmt.Fprintf(out, "操作完成。\n管理页面：%s\n自签名证书 SHA-256：%s\n", m.SetupAddress(), fingerprint)
+		if code != "" {
+			fmt.Fprintf(out, "一次性初始化码：%s\n请在浏览器核对证书指纹后设置管理员密码。\n", code)
+		}
 		return nil
 	}
 	// Stop accepting API work before taking the global lock during uninstall.

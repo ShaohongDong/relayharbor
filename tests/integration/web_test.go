@@ -2,6 +2,8 @@ package integration
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"io"
 	"net"
@@ -25,7 +27,7 @@ import (
 
 func apiCall(t *testing.T, method, path string, body any, rev string) (json.RawMessage, string) {
 	t.Helper()
-	b, r, e := api.Client(context.Background(), "/var/lib/gost-deploy/api-token", method, path, body, rev)
+	b, r, e := api.Client(context.Background(), "/run/lock/gost-deploy-api.sock", method, path, body, rev)
 	if e != nil {
 		t.Fatal("management API", path, e)
 	}
@@ -66,7 +68,7 @@ func verifyOperationsAPI(t *testing.T) {
 	if !load(t, "/etc/gost-deploy/config.json").Equal(original) {
 		t.Fatal("API rollback did not restore original config")
 	}
-	if _, _, e = api.Client(context.Background(), "/var/lib/gost-deploy/api-token", "POST", "/service/stop", map[string]any{}, "stale"); e == nil {
+	if _, _, e = api.Client(context.Background(), "/run/lock/gost-deploy-api.sock", "POST", "/service/stop", map[string]any{}, "stale"); e == nil {
 		t.Fatal("stale service operation accepted")
 	}
 	if !manage.New().Active(context.Background()) {
@@ -117,11 +119,46 @@ func TestBrowserSession(t *testing.T) {
 	manage.New().Runtime(context.Background(), supervisor.Request{Command: "status"}, &rt)
 	frontendPID := rt.FrontendPID
 	upstream := nodes[0].Addr
-	tokenBytes, _ := os.ReadFile("/var/lib/gost-deploy/api-token")
-	token := strings.TrimSpace(string(tokenBytes))
-	target, _ := url.Parse("http://127.0.0.1:18080")
+	token := config.Secret()
+	m := manage.New()
+	claim, e := m.AuthStore().Claim(true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = m.AuthStore().Initialize(claim, token); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile("/var/lib/gost-deploy/browser-fixture-secret", []byte(token), 0600); e != nil {
+		t.Fatal(e)
+	}
+	_, rev, e := api.Client(context.Background(), m.APISocket(), "GET", "/config", nil, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = m.SetupComplete(rev); e != nil {
+		t.Fatal(e)
+	}
+	certificate, e := m.AccessCertificate()
+	if e != nil {
+		t.Fatal(e)
+	}
+	root, e := x509.ParseCertificate(certificate.Certificate[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(root)
+	target, _ := url.Parse("https://localhost:18443")
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Transport = &http.Transport{Proxy: nil}
+	director := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		director(r)
+		r.Host = "localhost:18443"
+		if r.Header.Get("Origin") != "" {
+			r.Header.Set("Origin", "https://localhost:18443")
+		}
+	}
+	proxy.Transport = &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
 	done := make(chan struct{})
 	var once sync.Once
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -157,8 +194,8 @@ func TestBrowserSession(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
-	go server.Serve(listener)
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, TLSConfig: &tls.Config{Certificates: []tls.Certificate{*certificate}, MinVersion: tls.VersionTLS12}}
+	go server.ServeTLS(listener, "", "")
 	defer server.Close()
 	t.Log("READY browser fixture")
 	select {

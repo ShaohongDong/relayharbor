@@ -170,6 +170,14 @@ func (m *Manager) Status(ctx context.Context, s *State) (map[string]any, error) 
 	return v, nil
 }
 func (m *Manager) Preflight(c config.Config, old *config.Config) error {
+	if v, e := m.Access(); e != nil {
+		return e
+	} else if v.Port != 0 {
+		_, port, _ := net.SplitHostPort(c.Listener.Addr)
+		if port == fmt.Sprint(v.Port) {
+			return errors.New("入口端口已预留给管理 HTTPS")
+		}
+	}
 	if old != nil && c.Listener.Addr == old.Listener.Addr {
 		return nil
 	}
@@ -541,11 +549,7 @@ func (m *Manager) Apply(ctx context.Context, s *State, rel Release, c config.Con
 		if e = Atomic(m.P.APIUnit, []byte(APIUnitText), 0644, -1); e != nil {
 			return e
 		}
-		if !exists(m.P.Token) {
-			if e = Atomic(m.P.Token, []byte(config.Secret()+"\n"), 0600, -1); e != nil {
-				return e
-			}
-		}
+
 	}
 	if e = m.write(c, rel, options, rev); e != nil {
 		return e

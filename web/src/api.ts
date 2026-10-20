@@ -12,16 +12,19 @@ export class APIError extends Error {
   }
 }
 export async function request<T>(
-  token: string,
+  csrf: string,
   path: string,
   method = 'GET',
   value?: unknown,
   revision?: string,
+  idempotencyKey?: string,
 ): Promise<Envelope<T>> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 180000)
   try {
-    const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+    const headers: Record<string, string> = {}
+    if (csrf) headers['X-CSRF-Token'] = csrf
+    if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey
     if (value !== undefined) headers['Content-Type'] = 'application/json'
     if (revision) headers['If-Match'] = `"${revision}"`
     const response = await fetch(`/api/v1${path}`, {
@@ -30,7 +33,7 @@ export async function request<T>(
       body: value === undefined ? undefined : JSON.stringify(value),
       signal: controller.signal,
       cache: 'no-store',
-      credentials: 'omit',
+      credentials: 'same-origin',
     })
     const body = await response.json()
     if (!response.ok)

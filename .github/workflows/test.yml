@@ -1,9 +1,22 @@
 name: deployment-tests
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: 0.1.0-dev
+permissions:
+  contents: read
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      VERSION: ${{ inputs.version || '0.1.0-dev' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -15,33 +28,74 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Formatting, vet and unit tests
+      - name: Static checks, unit tests and race tests
         run: |
           make check
           make fetch
           make test
           make test-race
-      - name: Browser component acceptance
+      - name: Browser acceptance
         run: |
           cd web
           npx playwright install --with-deps chromium
           npm run test:e2e -- --project=mock
-      - name: Install ARM64 emulator
-        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
-      - name: Systemd matrix and ARM64 protocol tests
-        run: make integration
-      - name: Build static release archives
-        run: make release
+      - name: Build release archives
+        run: |
+          make release
+          cd dist
+          sha256sum --check SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            dist/*.tar.gz
+            dist/install.sh
+            dist/SHA256SUMS
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
+          name: checks-evidence
           path: test-results/
-      - uses: actions/upload-artifact@v4
+  system:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: ubuntu20, system: 'ubuntu:20.04', arm: '' }
+          - { name: ubuntu22, system: 'ubuntu:22.04', arm: '' }
+          - { name: ubuntu24, system: 'ubuntu:24.04', arm: '' }
+          - { name: debian12, system: 'debian:12-slim', arm: '' }
+          - { name: debian13, system: 'debian:13-slim', arm: '' }
+          - { name: arm-ubuntu24, system: '', arm: 'ubuntu:24.04' }
+          - { name: arm-debian12, system: '', arm: 'debian:12-slim' }
+    env:
+      GOST_TEST_SYSTEM_SPECS: ${{ matrix.system }}
+      GOST_TEST_ARM_SPECS: ${{ matrix.arm }}
+      VERSION: ${{ inputs.version || '0.1.0-dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          name: linux-binaries
-          path: dist/*.tar.gz
-      - uses: actions/upload-artifact@v4
+          go-version: '1.27.2'
+          cache: false
+      - uses: actions/setup-node@v4
         with:
-          name: checksums
-          path: dist/SHA256SUMS
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Prepare browser and emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          make web-build
+          cd web
+          npx playwright install --with-deps chromium
+      - name: Isolated acceptance
+        run: make integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-${{ matrix.name }}
+          path: test-results/

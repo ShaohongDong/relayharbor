@@ -193,15 +193,43 @@ func TestTLSDeployment(t *testing.T) {
 		t.Fatal(e)
 	}
 	// All requests validate the actual CA chain and server hostname, including through nginx.
-	tokenBytes, _ := os.ReadFile("/var/lib/gost-deploy/api-token")
-	token := strings.TrimSpace(string(tokenBytes))
+	codeValue, e := m.AuthStore().Claim(true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	const adminPassword = "integration administrator password"
+	if e = m.AuthStore().Initialize(codeValue, adminPassword); e != nil {
+		t.Fatal(e)
+	}
+	loginReq, _ := http.NewRequest("POST", "https://gost-panel.test/api/v1/auth/login", strings.NewReader(`{"password":"`+adminPassword+`"}`))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginReq.Header.Set("Origin", "https://gost-panel.test")
+	loginResponse, e := client.Do(loginReq)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var loginData struct {
+		Data struct {
+			CSRF string `json:"csrf"`
+		} `json:"data"`
+	}
+	if e = json.NewDecoder(loginResponse.Body).Decode(&loginData); e != nil {
+		t.Fatal(e)
+	}
+	loginResponse.Body.Close()
+	cookies := loginResponse.Cookies()
+	if loginResponse.StatusCode != 200 || len(cookies) != 1 {
+		t.Fatal("password login", loginResponse.StatusCode)
+	}
 	call := func(method, path, rev string, body string) (int, http.Header, []byte) {
 		t.Helper()
 		r, e := http.NewRequest(method, "https://gost-panel.test"+path, strings.NewReader(body))
 		if e != nil {
 			t.Fatal(e)
 		}
-		r.Header.Set("Authorization", "Bearer "+token)
+		r.AddCookie(cookies[0])
+		r.Header.Set("Origin", "https://gost-panel.test")
+		r.Header.Set("X-CSRF-Token", loginData.Data.CSRF)
 		if rev != "" {
 			r.Header.Set("If-Match", `"`+rev+`"`)
 		}
@@ -266,11 +294,11 @@ func TestTLSDeployment(t *testing.T) {
 	if delay := time.Until(waitUntil); delay > 0 {
 		time.Sleep(delay)
 	}
-	_, rev, e = api.Client(context.Background(), "/var/lib/gost-deploy/api-token", "GET", "/config", nil, "")
+	_, rev, e = api.Client(context.Background(), "/run/lock/gost-deploy-api.sock", "GET", "/config", nil, "")
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, _, e = api.Client(context.Background(), "/var/lib/gost-deploy/api-token", "POST", "/tls/renew", map[string]any{}, rev)
+	_, _, e = api.Client(context.Background(), "/run/lock/gost-deploy-api.sock", "POST", "/tls/renew", map[string]any{}, rev)
 	if e != nil {
 		t.Fatal(e)
 	}

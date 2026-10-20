@@ -17,8 +17,8 @@ def sha(path):
 
 
 def sources():
-    files = [ROOT / name for name in ("gostctl", "install.sh", "README.md", ".gitignore", ".dockerignore")]
-    for directory in ("tests", "examples", ".github"):
+    files = [ROOT / name for name in ("gostctl", "install.sh", "README.md", ".gitignore", ".dockerignore", "docs/openapi.json")]
+    for directory in ("tests", "examples", ".github", "gost_deploy"):
         files += [p for p in (ROOT / directory).rglob("*") if p.is_file() and "__pycache__" not in p.parts]
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(files)}
 
@@ -33,17 +33,20 @@ elif sys.argv[1] == "finish":
         path = RESULTS / f"{name}.log"
         content = path.read_text()
         summary = [json.loads(line) for line in content.splitlines() if line.startswith('{"passed":')]
-        assert len(summary) == 1 and summary[0]["passed"] == 17, name
+        assert len(summary) == 1 and summary[0]["passed"] == 20, name
         assert "PASS automatic service startup after container reboot, TCP/UDP relay" in content, name
+        assert "PASS removed workers drain existing streams before exit" in content, name
         arch = subprocess.check_output(["docker", "image", "inspect", f"gost-deploy-test:{name}",
                                         "--format", "{{.Architecture}}"], text=True).strip()
         matrix[name] = {"architecture": arch, "scenarios": summary[0]["passed"],
-                        "container_reboot": True, "log_sha256": sha(path)}
+                        "container_reboot": True, "routing_scenarios": 9, "log_sha256": sha(path)}
     arm64 = {}
     for name in ("ubuntu-24-04", "debian-12-slim"):
         path = RESULTS / f"{name}-arm64-qemu.log"
-        assert len([line for line in path.read_text().splitlines() if line.startswith("PASS arm64 QEMU")]) == 4, name
-        arm64[name] = {"emulator": "qemu-aarch64-static", "cases": 4, "log_sha256": sha(path)}
+        content = path.read_text()
+        assert len([line for line in content.splitlines() if line.startswith("PASS arm64 QEMU")]) == 4, name
+        assert "PASS removed workers drain existing streams before exit" in content, name
+        arm64[name] = {"emulator": "qemu-aarch64-static", "cases": 4, "routing_scenarios": 9, "log_sha256": sha(path)}
     report = {"created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "sources": baseline, "systemd_containers": matrix, "arm64_protocol_emulation": arm64}
     (RESULTS / "evidence.json").write_text(json.dumps(report, indent=2) + "\n")

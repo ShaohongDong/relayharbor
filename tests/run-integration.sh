@@ -41,6 +41,7 @@ for spec in ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:12-slim debian:13-slim
         cat "${log}"
         exit 1
     fi
+    docker exec "${name}" python3 /src/tests/runtime_integration.py /artifacts/gost_3.3.0_linux_amd64.tar.gz >>"${log}" 2>&1
     docker exec "${name}" python3 /src/tests/boot.py prepare >>"${log}" 2>&1
     docker restart "${name}" >/dev/null
     wait_systemd

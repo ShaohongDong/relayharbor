@@ -8,14 +8,16 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 
-from protocol import auth_connect, exercise
+from protocol import auth_connect, exercise, targets, receive, reply
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 CTL = str(ROOT / "gostctl")
 CACHE = Path("/artifacts")
 RESULTS = []
@@ -54,14 +56,13 @@ def main():
         tmp = Path(tmp)
         candidate = tmp / "gost.json"
         command("init", "--output", candidate)
-        cfg = json.loads(candidate.read_text())
+        from gost_deploy import native, model
+        initial = json.loads(candidate.read_text())
+        cfg = native.service(initial["listener"]["addr"], initial["listener"]["users"], initial["listener"]["udp"])
         cfg["authers"][0]["auths"].append({"username": "用户@x", "password": "special :$()'\"\\ 😀"})
         config(candidate, cfg)
         command("check", "--config", candidate)
-        loader = importlib.machinery.SourceFileLoader("gostctl_test", CTL)
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        module = importlib.util.module_from_spec(spec)
-        loader.exec_module(module)
+        from gost_deploy import lifecycle as module
         # Refuse unrelated binary/account/unit without touching their contents.
         foreign = Path("/usr/local/bin/gost")
         foreign.write_text("unrelated")
@@ -124,6 +125,22 @@ def main():
         for auth in cfg["authers"][0]["auths"]:
             assert auth["password"] not in logs.stdout + logs.stderr
         record("multiple users, special credentials, anonymous/wrong-password rejection, DNS and TCP; UDP disabled")
+        # Simulate an older installed manager while retaining the same GOST/config.
+        current = module.load_state()
+        fixture = module.RELEASES.parent / "managers" / "previous-manager-fixture"
+        shutil.copytree(current["manager"], fixture)
+        with (fixture / "gost_deploy" / "__init__.py").open("a") as source:
+            source.write("\n# Previous manager build fixture.\n")
+        module.CODE_LINK.unlink()
+        module.CODE_LINK.symlink_to(fixture)
+        current["manager"] = str(fixture)
+        module.atomic_bytes(module.STATE, module.json_bytes(current))
+        old_api_pid = subprocess.check_output(["systemctl", "show", "gost-deploy-api", "-p", "MainPID", "--value"])
+        command("install", "--config", candidate, *offline)
+        assert module.load_state()["manager"] != str(fixture)
+        assert subprocess.check_output(["systemctl", "show", "gost-deploy-api", "-p", "MainPID", "--value"]) != old_api_pid
+        subprocess.run(["/usr/local/sbin/gostctl", "profile", "list"], check=True, capture_output=True)
+        record("manager-only update refreshes installed modules and API process")
         for action in ("stop", "start", "restart"):
             command(action)
         exercise(cfg)
@@ -155,9 +172,59 @@ def main():
         exercise(changed, udp=True)
         record("configuration update and actual UDP relay")
         command("rollback")
-        assert json.loads(Path("/etc/gost/gost.json").read_text()) == cfg
+        assert json.loads(Path("/etc/gost-deploy/config.json").read_text()) == model.normalize(cfg)
         exercise(cfg)
         record("configuration rollback")
+        # Exercise CLI -> authenticated API -> runtime against actual mixed upstreams.
+        processes = []
+        logs = []
+        try:
+            with targets() as (probe_port, _), targets() as (long_port, _):
+                nodes = []
+                for index, kind in enumerate(("http", "socks5")):
+                    addr = "127.0.0.1:{}".format(31100 + index)
+                    upstream = native.service(addr, cfg["authers"][0]["auths"])
+                    upstream["services"][0]["handler"]["type"] = kind
+                    path = tmp / (kind + ".json")
+                    config(path, upstream)
+                    log = (tmp / (kind + ".log")).open("w")
+                    logs.append(log)
+                    processes.append(subprocess.Popen(["/usr/local/bin/gost", "-C", str(path)], stdout=log, stderr=log))
+                    nodes.append({"id": kind, "type": kind, "addr": addr, "auth": cfg["authers"][0]["auths"][0]})
+                time.sleep(0.2)
+                pool_cfg = model.normalize(cfg)
+                probe = {"type": "tcp", "addr": "127.0.0.1:{}".format(probe_port)}
+                pool_cfg["profiles"] += [
+                    {"name": "pool-a", "type": "pool", "nodes": nodes, "probe": probe},
+                    {"name": "pool-b", "type": "pool", "nodes": [nodes[0]], "probe": probe}]
+                pool_cfg["activeProfile"] = "pool-a"
+                long_stream = auth_connect("127.0.0.1", 1080, cfg["authers"][0]["auths"][0])
+                with long_stream:
+                    long_stream.sendall(b"\x05\x01\x00\x01\x7f\x00\x00\x01" + long_port.to_bytes(2, "big"))
+                    reply(long_stream)
+                    # The target closes after one echo, so send only after the switch.
+                    pid = subprocess.check_output(["systemctl", "show", "gost", "-p", "MainPID", "--value"])
+                    config(candidate, pool_cfg)
+                    command("configure", "--config", candidate)
+                    result = json.loads(command("profile", "use", "pool-b").stdout)
+                    assert result["data"]["activeProfile"] == "pool-b" and result["data"]["available"]
+                    assert subprocess.check_output(["systemctl", "show", "gost", "-p", "MainPID", "--value"]) == pid
+                    long_stream.sendall(b"old-stream-kept")
+                    assert receive(long_stream, 15) == b"old-stream-kept"
+                exercise(cfg)
+                listed = json.loads(command("profile", "list").stdout)
+                assert len(listed["data"]) == 3
+                command("profile", "probe", "pool-a")
+                command("profile", "use", "direct")
+                config(candidate, cfg)
+                command("configure", "--config", candidate)
+        finally:
+            for process in processes:
+                process.terminate()
+                process.wait(5)
+            for log in logs:
+                log.close()
+        record("API mixed-pool configure and acknowledged CLI switch preserve live connection/PID")
         before = state_bytes()
         invalid = copy.deepcopy(cfg)
         invalid["services"][0]["handler"]["auther"] = "does-not-exist"
@@ -238,6 +305,39 @@ def main():
         subprocess.run(["systemctl", "daemon-reload"], check=True)
         assert state_bytes() == before
         record("external systemd drop-in preserved")
+        # Recreate the exact legacy deployment layout to test in-place migration.
+        subprocess.run(["systemctl", "disable", "--now", "gost-deploy-api.service"], check=True, capture_output=True)
+        subprocess.run(["systemctl", "stop", "gost.service"], check=True)
+        legacy_state = module.load_state()
+        legacy_state = {"schema": 1, "installed": True, "owns_account": True,
+                        "current": legacy_state["current"], "previous": None}
+        module.atomic_bytes(module.STATE, module.json_bytes(legacy_state))
+        module.write_config(changed)
+        module.atomic_bytes(module.UNIT, module.LEGACY_UNIT_TEXT.encode(), 0o644)
+        module.atomic_bytes(module.CONTROL, b"#!/bin/sh\nexit 0\n", 0o755)
+        for path in (module.API_UNIT, module.MANIFEST, module.RUNTIME_INPUT, module.CODE_LINK):
+            path.unlink(missing_ok=True)
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        subprocess.run(["systemctl", "start", "gost.service"], check=True)
+        module.health(changed)
+        legacy_bytes = state_bytes()
+        # Failure after installing the new manager must restore the legacy layout.
+        try:
+            module.apply(legacy_state, dict(legacy_state["current"], binary=str(failing)), changed)
+        except module.Error as exc:
+            assert "已恢复" in str(exc), exc
+        else:
+            raise AssertionError("failed migration accepted")
+        assert state_bytes() == legacy_bytes
+        assert module.UNIT.read_text() == module.LEGACY_UNIT_TEXT
+        assert module.CONTROL.read_bytes() == b"#!/bin/sh\nexit 0\n"
+        exercise(changed, udp=True)
+        command("install", "--config", candidate, *offline)
+        assert module.load_state()["schema"] == 2
+        assert module.UNIT.read_text() == module.UNIT_TEXT
+        subprocess.run(["/usr/local/sbin/gostctl", "profile", "list"], check=True, capture_output=True)
+        exercise(changed, udp=True)
+        record("legacy migration and failed migration restore manager/unit/config/state")
         command("uninstall")
         assert Path("/etc/gost/gost.json").exists()
         assert not Path("/usr/local/bin/gost").exists()

@@ -69,8 +69,15 @@ def targets():
             try:
                 stream, _ = tcp.accept()
                 with stream:
-                    stream.settimeout(3)
-                    stream.sendall(stream.recv(4096))
+                    stream.settimeout(0.2)
+                    while not stop.is_set():
+                        try:
+                            data = stream.recv(4096)
+                        except socket.timeout:
+                            continue
+                        if not data:
+                            break
+                        stream.sendall(data)
             except socket.timeout:
                 continue
 

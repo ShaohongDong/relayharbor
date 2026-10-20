@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -59,6 +60,10 @@ def main():
                             process.kill()
                             process.wait()
                 print(f"PASS arm64 QEMU {version} authentication/domain/TCP UDP={udp}", flush=True)
+
+    subprocess.run([sys.executable, str(Path(__file__).with_name("runtime_integration.py")),
+                    "/artifacts/gost_3.3.0_linux_arm64.tar.gz", "--arch", "arm64",
+                    "--qemu", "/qemu-aarch64-static"], check=True)
 
 
 if __name__ == "__main__":

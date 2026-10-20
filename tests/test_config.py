@@ -10,10 +10,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-loader = importlib.machinery.SourceFileLoader("gostctl", str(ROOT / "gostctl"))
-spec = importlib.util.spec_from_loader(loader.name, loader)
-g = importlib.util.module_from_spec(spec)
-loader.exec_module(g)
+from gost_deploy import lifecycle as g
+
 
 
 class Policy(unittest.TestCase):

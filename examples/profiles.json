@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "listener": {
+    "addr": "0.0.0.0:1080",
+    "udp": false,
+    "users": [{"username": "proxy", "password": "CHANGE_ME_entry_password"}]
+  },
+  "activeProfile": "direct",
+  "profiles": [
+    {"name": "direct", "type": "direct"},
+    {
+      "name": "office",
+      "type": "pool",
+      "nodes": [
+        {"id": "http-a", "type": "http", "addr": "proxy-a.example:8080",
+         "auth": {"username": "user", "password": "CHANGE_ME_http_password"}},
+        {"id": "socks-b", "type": "socks5", "addr": "proxy-b.example:1080",
+         "auth": {"username": "user", "password": "CHANGE_ME_socks_password"}}
+      ],
+      "probe": {"type": "tcp", "addr": "your-target.example:443", "interval": 30, "timeout": 5}
+    },
+    {
+      "name": "backup-pool",
+      "type": "pool",
+      "nodes": [{"id": "http-c", "type": "http", "addr": "proxy-c.example:8080"}],
+      "probe": {"type": "http", "url": "https://your-target.example/health", "expectedStatus": 200, "interval": 30, "timeout": 5}
+    }
+  ]
+}

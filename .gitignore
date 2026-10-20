@@ -1,6 +1,12 @@
-__pycache__/
-*.pyc
 .cache/
 test-results/
+bin/
+dist/
 gost.json
 *.local.json
+web/node_modules/
+internal/webui/assets/*
+!internal/webui/assets/.gitkeep
+web/test-results/
+web/playwright-report/
+web/.vite/

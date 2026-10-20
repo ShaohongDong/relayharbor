@@ -6,16 +6,42 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Static configuration tests
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Formatting, vet and unit tests
         run: |
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
-          bash -n install.sh tests/run-integration.sh
+          make check
+          make fetch
+          make test
+          make test-race
+      - name: Browser component acceptance
+        run: |
+          cd web
+          npx playwright install --with-deps chromium
+          npm run test:e2e -- --project=mock
       - name: Install ARM64 emulator
         run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Systemd matrix and ARM64 protocol tests
-        run: bash tests/run-integration.sh
+        run: make integration
+      - name: Build static release archives
+        run: make release
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
           path: test-results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: dist/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: dist/SHA256SUMS

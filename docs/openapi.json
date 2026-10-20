@@ -3,11 +3,20 @@
   "info": {
     "title": "gost-deploy local management API",
     "version": "1.0.0",
-    "description": "Loopback only. No CORS. Secrets are write-only. No install/upgrade/uninstall HTTP endpoints."
+    "description": "Authenticated loopback API, optionally exposed over HTTPS by managed nginx. No CORS. Proxy secrets are write-only; AnyTLS credentials require an explicit authenticated operation. AnyTLS has an independent revision. No install/upgrade/uninstall or certificate setup HTTP endpoints."
   },
   "servers": [
     {
       "url": "http://127.0.0.1:18080/api/v1"
+    },
+    {
+      "url": "https://{domain}/api/v1",
+      "variables": {
+        "domain": {
+          "default": "panel.example.com",
+          "description": "Domain configured with gostctl tls setup"
+        }
+      }
     }
   ],
   "security": [
@@ -81,7 +90,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -161,7 +170,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -261,7 +270,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -338,7 +347,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -413,7 +422,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -532,7 +541,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -619,7 +628,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -739,7 +748,7 @@
             }
           },
           "409": {
-            "description": "Revision conflict, migration required or stopped service",
+            "description": "Revision conflict or stopped service",
             "content": {
               "application/json": {
                 "schema": {
@@ -769,6 +778,1864 @@
             }
           }
         ]
+      }
+    },
+    "/service/start": {
+      "post": {
+        "summary": "start the managed forwarding service; keep the management API running",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Status"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted revision from GET /config ETag"
+          }
+        ]
+      }
+    },
+    "/service/stop": {
+      "post": {
+        "summary": "stop the managed forwarding service; keep the management API running",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Status"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted revision from GET /config ETag"
+          }
+        ]
+      }
+    },
+    "/service/restart": {
+      "post": {
+        "summary": "restart the managed forwarding service; keep the management API running",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Status"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted revision from GET /config ETag"
+          }
+        ]
+      }
+    },
+    "/rollback": {
+      "post": {
+        "summary": "Restore the previous config, GOST release, running and enabled state",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Status"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or rollback_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted revision from GET /config ETag"
+          }
+        ]
+      }
+    },
+    "/logs": {
+      "get": {
+        "summary": "Read bounded, redacted journal entries from the two managed services",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Logs"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ]
+      }
+    },
+    "/tls": {
+      "get": {
+        "summary": "HTTPS deployment, certificate, automatic renewal timer and background task status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TLSStatus"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tls/renew": {
+      "post": {
+        "summary": "Queue certificate renewal check",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "operation",
+                        "state"
+                      ],
+                      "properties": {
+                        "operation": {
+                          "type": "string",
+                          "enum": [
+                            "renew"
+                          ]
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "queued"
+                          ]
+                        }
+                      }
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted revision from GET /config ETag"
+          }
+        ],
+        "description": "Returns immediately after queueing a systemd task; poll GET /tls for completion. Keeps the proxy configuration revision unchanged. A concurrent task returns 409 tls_busy. Renewal does not force early issuance."
+      }
+    },
+    "/tls/reload": {
+      "post": {
+        "summary": "Queue nginx config validation and graceful reload",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted config revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "operation",
+                        "state"
+                      ],
+                      "properties": {
+                        "operation": {
+                          "type": "string",
+                          "enum": [
+                            "reload"
+                          ]
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "queued"
+                          ]
+                        }
+                      }
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid config or operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid Bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or stopped service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted revision from GET /config ETag"
+          }
+        ],
+        "description": "Returns immediately after queueing a systemd task; poll GET /tls for completion. Keeps the proxy configuration revision unchanged. A concurrent task returns 409 tls_busy. Renewal does not force early issuance."
+      }
+    },
+    "/anytls": {
+      "get": {
+        "summary": "AnyTLS status and redacted users",
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AnyTLSStatus"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/enable": {
+      "post": {
+        "summary": "AnyTLS enable",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/disable": {
+      "post": {
+        "summary": "AnyTLS disable",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users": {
+      "post": {
+        "summary": "AnyTLS users",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535,
+                    "description": "0 allocates an unused port from 8443"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/rename": {
+      "post": {
+        "summary": "AnyTLS users/{id}/rename",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/enable": {
+      "post": {
+        "summary": "AnyTLS users/{id}/enable",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/disable": {
+      "post": {
+        "summary": "AnyTLS users/{id}/disable",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/delete": {
+      "post": {
+        "summary": "AnyTLS users/{id}/delete",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/reset-token": {
+      "post": {
+        "summary": "AnyTLS users/{id}/reset-token",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/reset-password": {
+      "post": {
+        "summary": "AnyTLS users/{id}/reset-password",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/credentials": {
+      "post": {
+        "summary": "AnyTLS users/{id}/credentials",
+        "description": "Only the targeted user is restarted/disconnected for password changes, disable or delete. Token rotation preserves proxy sessions. Explicit credentials access returns secrets. Global enable/disable affects all users.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AnyTLSCredentials"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Invalid management Bearer token"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/sub/{token}/clash.yaml": {
+      "servers": [
+        {
+          "url": "https://{domain}",
+          "variables": {
+            "domain": {
+              "default": "panel.example.com"
+            }
+          }
+        }
+      ],
+      "get": {
+        "summary": "Download complete Mihomo configuration",
+        "security": [],
+        "description": "HTTPS only. Opaque per-user token grants subscription access only; no management Bearer token. Invalid, disabled or revoked tokens return 404. Plain HTTP is rejected without redirect. No-store; request URLs are excluded from managed Nginx logs.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 43,
+              "maxLength": 43
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "YAML containing the user password; Cache-Control: no-store",
+            "content": {
+              "text/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unavailable subscription"
+          }
+        }
+      }
+    },
+    "/sub/{token}/proxies.yaml": {
+      "servers": [
+        {
+          "url": "https://{domain}",
+          "variables": {
+            "domain": {
+              "default": "panel.example.com"
+            }
+          }
+        }
+      ],
+      "get": {
+        "summary": "Download Mihomo proxy-provider nodes",
+        "security": [],
+        "description": "HTTPS only. Opaque per-user token grants subscription access only; no management Bearer token. Invalid, disabled or revoked tokens return 404. Plain HTTP is rejected without redirect. No-store; request URLs are excluded from managed Nginx logs.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 43,
+              "maxLength": 43
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "YAML containing the user password; Cache-Control: no-store",
+            "content": {
+              "text/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unavailable subscription"
+          }
+        }
       }
     }
   },
@@ -1024,6 +2891,26 @@
           "frontendPid": {
             "type": "integer",
             "nullable": true
+          },
+          "rollbackAvailable": {
+            "type": "boolean"
+          },
+          "rollbackTarget": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "activeProfile": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
           }
         }
       },
@@ -1090,6 +2977,229 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "Logs": {
+        "type": "object",
+        "required": [
+          "entries",
+          "truncated"
+        ],
+        "properties": {
+          "truncated": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "required": [
+                "time",
+                "unit",
+                "priority",
+                "message"
+              ],
+              "properties": {
+                "time": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string",
+                  "enum": [
+                    "gost.service",
+                    "gost-deploy-api.service"
+                  ]
+                },
+                "priority": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TLSStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "enabled",
+          "expiring",
+          "nginxActive",
+          "timerEnabled",
+          "timerActive",
+          "running"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiring": {
+            "type": "boolean"
+          },
+          "nginxActive": {
+            "type": "boolean"
+          },
+          "timerEnabled": {
+            "type": "boolean"
+          },
+          "timerActive": {
+            "type": "boolean"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "nextCheck": {
+            "type": "string"
+          },
+          "warning": {
+            "type": "string"
+          },
+          "notBefore": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "renew",
+              "reload"
+            ]
+          },
+          "lastResult": {
+            "type": "object",
+            "required": [
+              "operation",
+              "startedAt",
+              "finishedAt",
+              "acquired",
+              "deployed"
+            ],
+            "properties": {
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "setup",
+                  "renew",
+                  "reload"
+                ]
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "finishedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "acquired": {
+                "type": "boolean",
+                "description": "A new certificate was obtained from ACME. False when the check did not require renewal."
+              },
+              "deployed": {
+                "type": "boolean",
+                "description": "A certificate deployment succeeded, including retrying a previously acquired certificate."
+              },
+              "error": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "AnyTLSUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "port",
+          "enabled",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AnyTLSStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "enabled",
+          "users"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnyTLSUser"
+            }
+          }
+        }
+      },
+      "AnyTLSCredentials": {
+        "type": "object",
+        "required": [
+          "password",
+          "url",
+          "provider"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
           }
         }
       }

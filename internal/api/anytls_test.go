@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/kenny3755/gost_deploy/internal/manage"
+	"github.com/ShaohongDong/relayharbor/internal/manage"
 )
 
 type anyFake struct {

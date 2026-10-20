@@ -3,7 +3,7 @@ NPM ?= npm
 .DEFAULT_GOAL := build
 VERSION ?= 0.1.0-dev
 COMMIT := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-LDFLAGS := -X gitee.com/kenny3755/gost_deploy/internal/cli.Version=$(VERSION) -X gitee.com/kenny3755/gost_deploy/internal/cli.Commit=$(COMMIT)
+LDFLAGS := -X github.com/ShaohongDong/relayharbor/internal/cli.Version=$(VERSION) -X github.com/ShaohongDong/relayharbor/internal/cli.Commit=$(COMMIT)
 export GOTOOLCHAIN=local
 .PHONY: build check test test-race fetch integration release clean web-build web-check web-test web-e2e
 web/node_modules/.gost-deps: web/package.json web/package-lock.json
@@ -38,13 +38,13 @@ integration: build fetch
 	GO='$(GO)' bash tests/run-integration.sh
 release: web-build
 	@for arch in amd64 arm64; do \
-	  dir="dist/gost-deploy_$(VERSION)_linux_$$arch"; \
+	  dir="dist/relayharbor_$(VERSION)_linux_$$arch"; \
 	  mkdir -p "$$dir/bin" "$$dir/examples" "$$dir/docs"; \
 	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -buildvcs=false -ldflags '$(LDFLAGS)' -o "$$dir/bin/gostctl" ./cmd/gostctl || exit; \
 	  cp install.sh README.md "$$dir/"; cp examples/profiles.json "$$dir/examples/"; cp docs/openapi.json "$$dir/docs/"; \
 	  (cd "$$dir/bin" && sha256sum gostctl > SHA256SUMS); \
 	  tar -C dist -czf "$$dir.tar.gz" "$${dir##*/}" || exit; \
 	done
-	cd dist && sha256sum *.tar.gz > SHA256SUMS
+	cd dist && sha256sum relayharbor_$(VERSION)_linux_*.tar.gz > SHA256SUMS
 clean:
 	rm -rf bin dist

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/manage"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/manage"
 )
 
 type anyTLSBackend interface {

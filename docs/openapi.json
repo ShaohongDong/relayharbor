@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "gost-deploy local management API",
+    "title": "RelayHarbor local management API",
     "version": "1.0.0",
     "description": "Authenticated loopback API, optionally exposed over HTTPS by managed nginx. No CORS. Proxy secrets are write-only; AnyTLS credentials require an explicit authenticated operation. AnyTLS has an independent revision. No install/upgrade/uninstall or certificate setup HTTP endpoints."
   },

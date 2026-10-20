@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"gitee.com/kenny3755/gost_deploy/internal/cli"
+	"github.com/ShaohongDong/relayharbor/internal/cli"
 	"os"
 	"os/signal"
 	"syscall"

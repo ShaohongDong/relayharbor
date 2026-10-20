@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/config"
 )
 
 func TestExportIsolation(t *testing.T) {

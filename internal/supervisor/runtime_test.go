@@ -2,10 +2,10 @@ package supervisor
 
 import (
 	"context"
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/native"
-	"gitee.com/kenny3755/gost_deploy/internal/socks"
-	"gitee.com/kenny3755/gost_deploy/internal/testkit"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/native"
+	"github.com/ShaohongDong/relayharbor/internal/socks"
+	"github.com/ShaohongDong/relayharbor/internal/testkit"
 	"net"
 	"net/http"
 	"net/http/httptest"

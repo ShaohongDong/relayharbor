@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/api"
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/manage"
-	"gitee.com/kenny3755/gost_deploy/internal/native"
-	"gitee.com/kenny3755/gost_deploy/internal/supervisor"
-	"gitee.com/kenny3755/gost_deploy/internal/testkit"
+	"github.com/ShaohongDong/relayharbor/internal/api"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/manage"
+	"github.com/ShaohongDong/relayharbor/internal/native"
+	"github.com/ShaohongDong/relayharbor/internal/supervisor"
+	"github.com/ShaohongDong/relayharbor/internal/testkit"
 )
 
 func apiCall(t *testing.T, method, path string, body any, rev string) (json.RawMessage, string) {
@@ -39,7 +39,7 @@ func verifyOperationsAPI(t *testing.T) {
 	}
 	html, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != 200 || !strings.Contains(string(html), "GOST 控制台") {
+	if response.StatusCode != 200 || !strings.Contains(string(html), "RelayHarbor 控制台") {
 		t.Fatal("embedded console missing")
 	}
 	original := load(t, "/etc/gost-deploy/config.json")

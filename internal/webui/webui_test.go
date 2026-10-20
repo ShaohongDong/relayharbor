@@ -24,7 +24,7 @@ func TestStaticAndAPIRouting(t *testing.T) {
 		if w.Header().Get("Content-Security-Policy") == "" {
 			t.Fatal("missing security headers")
 		}
-		if tt.path == "/" && (!strings.Contains(w.Body.String(), "GOST 控制台") || w.Header().Get("Cache-Control") != "no-store") {
+		if tt.path == "/" && (!strings.Contains(w.Body.String(), "RelayHarbor 控制台") || w.Header().Get("Cache-Control") != "no-store") {
 			t.Fatal("console missing or cached")
 		}
 	}

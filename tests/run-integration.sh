@@ -24,7 +24,7 @@ for arch in amd64 arm64; do
 done
 CGO_ENABLED=0 "${GO}" test -c -o .cache/test-bin/integration.test ./tests/integration
 CGO_ENABLED=0 "${GO}" build -trimpath -buildvcs=false \
-    -ldflags '-X gitee.com/kenny3755/gost_deploy/internal/cli.Version=previous-fixture' \
+    -ldflags '-X github.com/ShaohongDong/relayharbor/internal/cli.Version=previous-fixture' \
     -o .cache/test-bin/gostctl-previous ./cmd/gostctl
 test_container=''
 fixture_container=''

@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/native"
-	"gitee.com/kenny3755/gost_deploy/internal/socks"
-	"gitee.com/kenny3755/gost_deploy/internal/subscription"
-	"gitee.com/kenny3755/gost_deploy/internal/supervisor"
-	"gitee.com/kenny3755/gost_deploy/internal/testkit"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/native"
+	"github.com/ShaohongDong/relayharbor/internal/socks"
+	"github.com/ShaohongDong/relayharbor/internal/subscription"
+	"github.com/ShaohongDong/relayharbor/internal/supervisor"
+	"github.com/ShaohongDong/relayharbor/internal/testkit"
 )
 
 func TestAnyTLSProtocol(t *testing.T) {

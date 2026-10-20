@@ -11,10 +11,10 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"gitee.com/kenny3755/gost_deploy/internal/api"
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/manage"
-	"gitee.com/kenny3755/gost_deploy/internal/testkit"
+	"github.com/ShaohongDong/relayharbor/internal/api"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/manage"
+	"github.com/ShaohongDong/relayharbor/internal/testkit"
 	"io"
 	"math/big"
 	"net"
@@ -220,7 +220,7 @@ func TestTLSDeployment(t *testing.T) {
 		return resp.StatusCode, resp.Header, b
 	}
 	code, _, html := call("GET", "/", "", "")
-	if code != 200 || !strings.Contains(string(html), "GOST 控制台") {
+	if code != 200 || !strings.Contains(string(html), "RelayHarbor 控制台") {
 		t.Fatal("console over HTTPS", code)
 	}
 	code, headers, _ := call("GET", "/api/v1/config", "", "")

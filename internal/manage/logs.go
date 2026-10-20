@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/config"
 )
 
 const MaxLogBytes = 256 << 10

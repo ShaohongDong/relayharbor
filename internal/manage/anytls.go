@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/subscription"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/subscription"
 )
 
 var ErrAnyTLSRevision = errors.New("AnyTLS 配置已变化，请重新读取后更新")

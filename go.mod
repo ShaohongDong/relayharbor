@@ -1,3 +1,3 @@
-module gitee.com/kenny3755/gost_deploy
+module github.com/ShaohongDong/relayharbor
 
 go 1.27.2

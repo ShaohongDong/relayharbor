@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/socks"
+	"github.com/ShaohongDong/relayharbor/internal/socks"
 )
 
 func SingBox(t *testing.T, arch, root string) string {

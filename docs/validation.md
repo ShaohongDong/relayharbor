@@ -1,5 +1,21 @@
 # 验证记录
 
+## RelayHarbor 重命名验证（2026-10-20，Asia/Shanghai）
+
+本地仓库迁移至 `/home/dsh/Desktop/relayharbor`，Go 模块统一为 `github.com/ShaohongDong/relayharbor`，`origin` 拉取与推送地址均为 `git@github.com:ShaohongDong/relayharbor.git`。项目文档、OpenAPI 标题、Vue 页面、前端包名及发行包名称同步更新；Git 历史保留，未提交或推送。`gostctl`、systemd 服务名、安装/状态目录、配置与 API 契约均保持原样。生产 Go 文件的改动逐项核对为模块 import 替换。
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| Node.js 24.22.0 / npm 11.19.1、Go 1.27.2 | 前端生产构建、TypeScript、Prettier、gofmt、go vet、Bash 与 Git 空白检查通过 |
+| Go 单元与真实 amd64 协议 | `GOST_TEST_REAL=1 go test -count=1 ./...` 通过，包含现有 GOST 与 Mihomo/AnyTLS 协议测试 |
+| 前端与浏览器 | Node.js 24 下 9 项单元测试、5 项受控 API 浏览器测试通过；浏览器使用本机 Chrome |
+| amd64 / arm64 发行包 | 新名称归档、内部目录、静态 ELF、包及程序 SHA-256 验证通过；amd64 包内程序与本轮构建一致 |
+| CLI 与仓库 | `gostctl version/init/check` 通过；原 HEAD 保留，旧目录无残留或软链接，origin 地址核对一致 |
+
+发行文件名为 `relayharbor_0.1.0-dev_linux_<arch>.tar.gz`，校验清单仅收录当前版本的新名称发行包，旧缓存未删除。先使用宿主 Node.js 26 完成初步检查，随后通过官方 HTTPS 下载并校验 Node.js 24 归档，在仓库缓存内补齐规定版本并重做前端构建与测试，未修改宿主默认 Node.js。
+
+本轮日志为 `test-results/rename-*.log`，源码、产物和日志哈希见 `test-results/rename-evidence.json`。未重跑完整 race、systemd 容器矩阵、真实 systemd 浏览器链路或 ARM64 QEMU；未验证 SSH 写入权限或修改已安装服务。以下章节及原 `evidence.json` 为重命名前的历史验收，不能作为本轮源码的完整系统验收。
+
 ## AnyTLS 多用户与 Clash/Mihomo 订阅验收（2026-10-20，Asia/Shanghai）
 
 本轮新增独立用户/设备 AnyTLS 入口、HTTPS 完整订阅及 proxy-provider 节点列表、CLI/API/Vue 用户管理。使用官方固定版本 sing-box 1.14.3；真实客户端为 Mihomo 1.19.32，两架构归档均校验仓库锁定 SHA-256。用户实例以非特权 gost 账号运行，单个用户变更只操作对应 systemd 服务，所有实例通过认证 SOCKS5 进入原调度器。

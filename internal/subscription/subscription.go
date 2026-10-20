@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/config"
 )
 
 type User struct {

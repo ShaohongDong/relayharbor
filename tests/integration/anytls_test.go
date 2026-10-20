@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/api"
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/manage"
-	"gitee.com/kenny3755/gost_deploy/internal/native"
-	"gitee.com/kenny3755/gost_deploy/internal/testkit"
+	"github.com/ShaohongDong/relayharbor/internal/api"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/manage"
+	"github.com/ShaohongDong/relayharbor/internal/native"
+	"github.com/ShaohongDong/relayharbor/internal/testkit"
 )
 
 // Shares the isolated ACME deployment so renewal exercises Nginx and both

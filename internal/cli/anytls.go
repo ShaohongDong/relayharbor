@@ -6,8 +6,8 @@ import (
 	"flag"
 	"io"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/manage"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/manage"
 )
 
 func anyTLSCommand(ctx context.Context, m *manage.Manager, args []string, out io.Writer) error {

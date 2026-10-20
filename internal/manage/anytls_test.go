@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/native"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/native"
 )
 
 func anyTLSFixture(t *testing.T) (*Manager, *State, *AnyTLSState, *[]string) {

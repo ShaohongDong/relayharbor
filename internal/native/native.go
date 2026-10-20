@@ -1,7 +1,7 @@
 // Package native generates allow-listed native GOST configurations.
 package native
 
-import "gitee.com/kenny3755/gost_deploy/internal/config"
+import "github.com/ShaohongDong/relayharbor/internal/config"
 
 type M = map[string]any
 

@@ -1,8 +1,10 @@
-# gost-deploy
+# RelayHarbor
 
-Go 实现的 Ubuntu/Debian GOST v3 服务管理器，支持认证 SOCKS5 入口、直连、HTTP/SOCKS5 混合代理池、轮询、故障切换、定时端到端探测和保留已有连接的 profile 热切换。提供本机管理 API，供 CLI 和后续 Vue 前端使用。
+Go 实现的 Ubuntu/Debian GOST v3 服务管理器，支持认证 SOCKS5 入口、直连、HTTP/SOCKS5 混合代理池、轮询、故障切换、定时端到端探测和保留已有连接的 profile 热切换。提供内置 Vue 单页面控制台、管理 API、Nginx HTTPS 与自动证书，以及基于 sing-box 的 AnyTLS 多用户入口和 Mihomo 订阅。
 
 支持 Ubuntu 20.04/22.04/24.04、Debian 12/13，Linux amd64/arm64 和 systemd。生产 Go 程序只使用标准库，目标服务器无需 Node.js、Go 或 Python。转发内核继续使用独立的官方 GOST 二进制，默认 3.3.0。
+
+项目名称为 RelayHarbor；为保持现有部署兼容，管理命令仍为 `gostctl`，systemd 服务名、安装目录和配置路径沿用原命名。
 
 ## 安装与构建
 
@@ -24,9 +26,11 @@ sudo ./install.sh --config gost.json \
   --checksums /path/to/checksums.txt
 ```
 
-源码开发使用 Go 1.27.2、Node.js 24 LTS 和 Make：
+源码仓库：[ShaohongDong/relayharbor](https://github.com/ShaohongDong/relayharbor)。源码开发使用 Go 1.27.2、Node.js 24 LTS 和 Make：
 
 ```bash
+git clone git@github.com:ShaohongDong/relayharbor.git
+cd relayharbor
 make build
 make check
 make test
@@ -34,7 +38,7 @@ make test-race
 make release VERSION=0.1.0
 ```
 
-`make release` 在 `dist/` 生成 Linux amd64/arm64 静态程序发行包和 SHA-256 清单。可用 `make GO=/path/to/go build` 指定工具链。CI 生成构建产物，不自动对外发布。
+`make release` 在 `dist/` 生成 `relayharbor_<version>_linux_<arch>.tar.gz` 静态程序发行包和 SHA-256 清单（amd64/arm64）。可用 `make GO=/path/to/go build` 指定工具链。CI 生成构建产物，不自动对外发布。
 
 这是尚无正式部署的新项目：只接受 `schemaVersion:2` 配置，不导入旧原生 GOST JSON，不迁移 Python 版安装状态。若测试机器残留旧版安装，先使用旧版工具清理，不直接覆盖外部或不支持的资源。
 

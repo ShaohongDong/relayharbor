@@ -443,8 +443,8 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="!base" class="login-shell">
     <main class="login-card">
-      <div class="brand-mark">G</div>
-      <h1>GOST 控制台</h1>
+      <div class="brand-mark">R</div>
+      <h1>RelayHarbor 控制台</h1>
       <p class="muted">代理配置与运行管理</p>
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
       <el-form @submit.prevent="login" label-position="top">
@@ -472,7 +472,9 @@ onBeforeUnmount(() => {
   </div>
   <div v-else class="console" v-loading="busy" element-loading-text="操作进行中，请等待确认…">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark small">G</span><strong>GOST 控制台</strong></div>
+      <div class="brand">
+        <span class="brand-mark small">R</span><strong>RelayHarbor 控制台</strong>
+      </div>
       <el-tag :type="disconnected || !status?.available ? 'warning' : 'success'">{{
         serviceLabel
       }}</el-tag>

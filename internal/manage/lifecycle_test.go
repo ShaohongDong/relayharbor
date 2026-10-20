@@ -3,9 +3,9 @@ package manage
 import (
 	"context"
 	"errors"
-	"gitee.com/kenny3755/gost_deploy/internal/config"
-	"gitee.com/kenny3755/gost_deploy/internal/native"
-	"gitee.com/kenny3755/gost_deploy/internal/supervisor"
+	"github.com/ShaohongDong/relayharbor/internal/config"
+	"github.com/ShaohongDong/relayharbor/internal/native"
+	"github.com/ShaohongDong/relayharbor/internal/supervisor"
 	"os"
 	"path/filepath"
 	"reflect"

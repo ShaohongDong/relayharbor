@@ -71,7 +71,7 @@ test('AnyTLS uses its own revision and preserves an open user editor', async ({ 
     revision = 'a2'
     await route.fulfill({ json: { data: { state: 'applied' }, revision } })
   })
-  await page.getByRole('tab', { name: '客户端订阅' }).click()
+  await page.getByRole('link', { name: '客户端订阅' }).click()
   await expect(page.getByText('Phone', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '订阅与凭据', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -187,6 +187,8 @@ async function setup(page: Page) {
   await page.goto('/')
   await page.getByLabel('管理员密码', { exact: true }).fill('test-token')
   await page.getByRole('button', { name: '登录控制台' }).click()
+  await expect(page.getByTestId('stat-health')).toBeVisible()
+  await page.getByRole('link', { name: '代理池与节点' }).click()
   await expect(page.getByRole('button', { name: '管理代理池' })).toBeVisible()
   return {
     calls,
@@ -207,8 +209,13 @@ test('table filtering, editing, redaction and quoted revision', async ({ page })
   // A periodic status refresh must not overwrite the draft.
   await page.getByRole('button', { name: '刷新状态' }).click()
   await expect(page.getByText('changed-proxy:8080', { exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: '配置预览' }).click()
+  await page.getByRole('button', { name: '预览变更' }).click()
+  await expect(page.getByTestId('config-preview')).toContainText('changed-proxy:8080')
   await expect(page.getByTestId('config-preview')).not.toContainText('new-upstream-secret')
+  await page
+    .getByRole('dialog', { name: '预览变更' })
+    .getByRole('button', { name: '关闭此对话框' })
+    .click()
   await page.getByRole('button', { name: '校验并应用' }).click()
   await expect(page.getByText('配置已应用', { exact: true })).toBeVisible()
   const write = calls.find((c) => c.path === '/config' && c.body?.profiles)
@@ -240,7 +247,7 @@ test('revision conflicts preserve draft and disable another write', async ({ pag
 })
 test('service controls, plain text logs and narrow layout', async ({ page }) => {
   await setup(page)
-  await page.getByRole('tab', { name: '服务运维' }).click()
+  await page.getByRole('link', { name: '服务运维' }).click()
   await page.getByRole('button', { name: '停止服务', exact: true }).click()
   await page.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByRole('button', { name: '启动服务', exact: true })).toBeEnabled()
@@ -250,8 +257,14 @@ test('service controls, plain text logs and narrow layout', async ({ page }) => 
   await expect(page.getByTestId('logs')).toContainText('<script>literal text</script>')
   expect(await page.locator('script').count()).toBeLessThan(10)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('tab', { name: '代理池与节点' }).click()
+  await expect(page.getByRole('link', { name: '代理池与节点' })).toBeHidden()
+  await page.getByRole('button', { name: '打开导航' }).click()
+  await page.getByRole('link', { name: '代理池与节点' }).click()
+  await expect(page.getByRole('link', { name: '代理池与节点' })).toBeHidden()
   await expect(page.getByRole('button', { name: '添加节点' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
   await page.screenshot({ animations: 'disabled', path: '../test-results/console-mobile.png' })
 })
 
@@ -266,7 +279,7 @@ test('HTTPS setup hint, background renewal and failure states', async ({ page })
     }
     await route.fulfill({ json: { data: tls, revision: 'r1' } })
   })
-  await page.getByRole('tab', { name: '服务运维' }).click()
+  await page.getByRole('link', { name: 'HTTPS 证书' }).click()
   const panel = page.getByTestId('tls-panel')
   await expect(panel).toContainText('尚未配置 HTTPS')
   tls = {
@@ -367,6 +380,29 @@ test('first visit initializes password, restores setup and can finish in basic m
   await page.getByRole('button', { name: '进入控制台', exact: true }).click()
   await expect(page.getByRole('region', { name: '部署向导' })).not.toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: '管理代理池', exact: true })).toBeVisible()
+  await expect(page.getByTestId('stat-health')).toBeVisible()
   await expect(page.getByRole('region', { name: '部署向导' })).not.toBeVisible()
+})
+
+test('overview summarises health and navigation survives a reload', async ({ page }) => {
+  await setup(page)
+  await page.getByRole('link', { name: '概览' }).click()
+  await expect(page).toHaveURL(/#\/overview$/)
+  await expect(page.getByTestId('stat-health')).toHaveText('1 / 2')
+  await expect(page.getByTestId('stat-connections')).toHaveText('2')
+  await page.getByRole('button', { name: '查看节点' }).click()
+  await expect(page).toHaveURL(/#\/nodes$/)
+  await expect(page.locator('.node-table .el-table__body tr')).toHaveCount(2)
+  await page.getByRole('link', { name: '入口与认证' }).click()
+  await expect(page.getByRole('link', { name: '入口与认证' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await page.reload()
+  await page.getByLabel('管理员密码', { exact: true }).fill('test-token')
+  await page.getByRole('button', { name: '登录控制台' }).click()
+  await expect(page.getByLabel('监听地址')).toHaveValue('127.0.0.1:1080')
+  await expect(page.getByRole('region', { name: '未应用修改' })).toHaveCount(0)
+  await page.getByLabel('监听地址').fill('127.0.0.1:1081')
+  await expect(page.getByRole('region', { name: '未应用修改' })).toContainText('应用时需要重启服务')
 })

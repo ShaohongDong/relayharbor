@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { request } from './api'
+defineProps<{ error?: string }>()
 const emit = defineEmits<{ ready: [csrf: string] }>()
 const initialized = ref(true),
   loaded = ref(false),
@@ -57,11 +58,22 @@ async function submit() {
 <template>
   <div class="login-shell">
     <main class="login-card">
-      <div class="brand-mark">R</div>
-      <h1>RelayHarbor 控制台</h1>
-      <p>{{ initialized ? '使用管理员密码登录' : '首次访问 · 设置管理员密码' }}</p>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" />
-      <el-form v-if="loaded" label-position="top" @submit.prevent="submit">
+      <header class="login-brand">
+        <span class="brand-mark lg">R</span>
+        <div>
+          <h1>RelayHarbor 控制台</h1>
+          <p>{{ initialized ? '使用管理员密码登录' : '首次访问 · 设置管理员密码' }}</p>
+        </div>
+      </header>
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <el-alert
+        v-else-if="$props.error"
+        :title="$props.error"
+        type="error"
+        :closable="false"
+        show-icon
+      />
+      <el-form v-if="loaded" label-position="top" size="large" @submit.prevent="submit">
         <el-form-item v-if="!initialized" label="一次性初始化码"
           ><el-input v-model="code" aria-label="一次性初始化码" type="password" autocomplete="off"
         /></el-form-item>
@@ -90,7 +102,7 @@ async function submit() {
           >{{ initialized ? '登录控制台' : '设置密码并继续' }}</el-button
         >
       </el-form>
-      <p class="hint">忘记密码时，在服务器执行 gostctl auth reset。</p>
+      <p class="login-foot">忘记密码时，在服务器执行 <code>gostctl auth reset</code>。</p>
     </main>
   </div>
 </template>

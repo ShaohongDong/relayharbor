@@ -81,70 +81,84 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="operations" data-testid="tls-panel">
-    <div class="section-heading">
-      <h2>HTTPS 与证书</h2>
-      <el-button :loading="loading" @click="refresh">刷新 HTTPS 状态</el-button>
-    </div>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-alert v-if="warning" :title="warning" type="warning" :closable="false" />
-    <template v-if="status?.configured">
-      <p>
-        <strong>{{ status.domain }}</strong> ·
-        {{ status.enabled ? 'HTTPS 已启用' : 'HTTPS 未启用' }} ·
-        {{ status.nginxActive ? 'Nginx 运行中' : 'Nginx 已停止' }}
-      </p>
-      <dl class="tls-details">
-        <dt>证书签发者</dt>
-        <dd>{{ status.issuer || '暂无证书' }}</dd>
-        <dt>有效期</dt>
-        <dd>{{ stamp(status.notBefore) }} 至 {{ stamp(status.notAfter) }}</dd>
-        <dt>自动续期</dt>
-        <dd>
-          {{ status.timerEnabled && status.timerActive ? '已启用' : '未运行' }} · 下次检查
-          {{ status.nextCheck || '暂无' }}
-        </dd>
-        <dt>最近结果</dt>
-        <dd>
+  <div class="page-stack" data-testid="tls-panel">
+    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+    <el-alert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
+    <section class="card">
+      <header class="card-header">
+        <div>
+          <h2>HTTPS 与证书</h2>
+          <p v-if="status?.configured">
+            <strong>{{ status.domain }}</strong>
+          </p>
+          <p v-else>为控制台与订阅提供受信任的 HTTPS 访问</p>
+        </div>
+        <el-button :loading="loading" @click="refresh">刷新 HTTPS 状态</el-button>
+      </header>
+      <template v-if="status?.configured">
+        <div class="chip-row">
+          <span class="health" :class="status.enabled ? 'tone-ok' : 'tone-idle'"
+            ><span class="status-dot" />{{ status.enabled ? 'HTTPS 已启用' : 'HTTPS 未启用' }}</span
+          >
+          <span class="health" :class="status.nginxActive ? 'tone-ok' : 'tone-bad'"
+            ><span class="status-dot" />{{
+              status.nginxActive ? 'Nginx 运行中' : 'Nginx 已停止'
+            }}</span
+          >
+        </div>
+        <dl class="details">
+          <dt>证书签发者</dt>
+          <dd>{{ status.issuer || '暂无证书' }}</dd>
+          <dt>有效期</dt>
+          <dd>{{ stamp(status.notBefore) }} 至 {{ stamp(status.notAfter) }}</dd>
+          <dt>自动续期</dt>
+          <dd>
+            {{ status.timerEnabled && status.timerActive ? '已启用' : '未运行' }} · 下次检查
+            {{ status.nextCheck || '暂无' }}
+          </dd>
+          <dt>最近结果</dt>
+          <dd>
+            {{
+              status.lastResult
+                ? `${stamp(status.lastResult.finishedAt)} · ${status.lastResult.error ? '失败' : '成功'} · ${status.lastResult.acquired ? '证书已获取' : '未获取新证书'} · ${status.lastResult.deployed ? '已部署' : '未部署新证书'}`
+                : '暂无记录'
+            }}
+          </dd>
+        </dl>
+        <p v-if="status.running" role="status" class="callout callout-info">
           {{
-            status.lastResult
-              ? `${stamp(status.lastResult.finishedAt)} · ${status.lastResult.error ? '失败' : '成功'} · ${status.lastResult.acquired ? '证书已获取' : '未获取新证书'} · ${status.lastResult.deployed ? '已部署' : '未部署新证书'}`
-              : '暂无记录'
-          }}
-        </dd>
-      </dl>
-      <p v-if="status.running" role="status">
-        {{
-          status.operation === 'renew' ? '正在检查证书续期' : '正在重载 Nginx'
-        }}，关闭页面不影响后台任务。
-      </p>
-      <p class="muted">
-        每 12 小时自动检查续期；未到续期时间不会重复签发。域名修改可在部署设置完成，停用通过服务器
-        CLI 完成。
-      </p>
-      <div class="button-row">
-        <el-button
-          :disabled="!status.enabled || status.running || submitting || blocked"
-          @click="operate('renew')"
-          >检查续期</el-button
-        >
-        <el-button
-          :disabled="!status.enabled || status.running || submitting || blocked"
-          @click="operate('reload')"
-          >重载 Nginx</el-button
-        >
-      </div>
-    </template>
-    <template v-else-if="status">
-      <p class="muted">
-        尚未配置 HTTPS。将域名指向服务器，放行公网 80/443 端口后，在专用服务器执行：
-      </p>
-      <pre class="config-preview">
+            status.operation === 'renew' ? '正在检查证书续期' : '正在重载 Nginx'
+          }}，关闭页面不影响后台任务。
+        </p>
+        <div class="button-row">
+          <el-button
+            :disabled="!status.enabled || status.running || submitting || blocked"
+            @click="operate('renew')"
+            >检查续期</el-button
+          >
+          <el-button
+            :disabled="!status.enabled || status.running || submitting || blocked"
+            @click="operate('reload')"
+            >重载 Nginx</el-button
+          >
+        </div>
+        <p class="hint">
+          每 12 小时自动检查续期；未到续期时间不会重复签发。域名修改可在部署设置完成，停用通过服务器
+          CLI 完成。
+        </p>
+      </template>
+      <template v-else-if="status">
+        <p class="muted">
+          尚未配置 HTTPS。将域名指向服务器，放行公网 80/443 端口后，在专用服务器执行：
+        </p>
+        <pre class="code-block">
 sudo gostctl tls setup --domain panel.example.com --email admin@example.com --accept-tos</pre>
-      <p class="muted">
-        首次部署及域名修改请打开“部署设置”；也可使用上方 CLI。自动续期无需保持页面打开。
-      </p>
-    </template>
-    <p v-else-if="loading" class="muted">正在读取 HTTPS 状态…</p>
-  </section>
+        <p class="hint">
+          首次部署及域名修改请打开<a href="#/setup">“部署设置”</a>；也可使用上方
+          CLI。自动续期无需保持页面打开。
+        </p>
+      </template>
+      <p v-else-if="loading" class="muted">正在读取 HTTPS 状态…</p>
+    </section>
+  </div>
 </template>

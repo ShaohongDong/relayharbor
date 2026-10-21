@@ -22,7 +22,7 @@ interface Credentials {
   url: string
   provider: string
 }
-const props = defineProps<{ token: string }>()
+const props = defineProps<{ token: string; embedded?: boolean }>()
 const emit = defineEmits<{ error: [error: unknown] }>()
 const status = ref<Status>()
 const revision = ref('')
@@ -177,102 +177,122 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="operations" data-testid="anytls-panel">
-    <div class="section-heading">
-      <h2>客户端订阅</h2>
-      <el-button :disabled="editor || busy" :loading="loading" @click="refresh"
-        >刷新订阅状态</el-button
-      >
-    </div>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
+  <div :class="embedded ? 'anytls-embedded' : 'page-stack'" data-testid="anytls-panel">
+    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <el-alert
       v-if="conflict"
       title="配置已变化。输入已保留，请关闭编辑并刷新状态后重试。"
       type="warning"
       :closable="false"
+      show-icon
     />
-    <template v-if="status?.configured">
-      <p>
-        {{ status.domain }} · {{ status.enabled ? 'AnyTLS 已启用' : 'AnyTLS 已停用' }} · sing-box
-        {{ status.version }}
-      </p>
-      <p class="muted">
-        适用于支持 AnyTLS 的 Mihomo 客户端，仅
-        TCP。每个用户有独立端口；全部用户跟随服务端当前代理池。
-      </p>
-      <div class="button-row">
-        <el-button
-          type="primary"
-          :disabled="!status.enabled || busy || conflict || loading"
-          @click="openEditor()"
-          >新增用户 / 设备</el-button
-        >
-        <el-button
-          :disabled="busy || conflict || loading"
-          @click="operate(status.enabled ? 'disable' : 'enable')"
-          >{{ status.enabled ? '停用 AnyTLS' : '启用 AnyTLS' }}</el-button
-        >
-      </div>
-      <el-table :data="status.users" empty-text="暂无用户，请添加用户或设备">
-        <el-table-column prop="name" label="用户 / 设备" min-width="150" />
-        <el-table-column prop="id" label="ID" min-width="120" />
-        <el-table-column prop="port" label="TCP 端口" width="110" />
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">{{
-            !row.enabled ? '已禁用' : row.active ? '运行中' : '已停止'
-          }}</template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="430">
-          <template #default="{ row }">
+    <section :class="embedded ? '' : 'card card-flush'">
+      <header class="card-header" :class="{ padded: !embedded }">
+        <div>
+          <h2>{{ embedded ? 'AnyTLS 用户' : '客户端订阅' }}</h2>
+          <p v-if="status?.configured">
+            {{ status.domain }} · {{ status.enabled ? 'AnyTLS 已启用' : 'AnyTLS 已停用' }} ·
+            sing-box {{ status.version }}
+          </p>
+        </div>
+        <div class="button-row">
+          <el-button :disabled="editor || busy" :loading="loading" @click="refresh"
+            >刷新订阅状态</el-button
+          >
+          <template v-if="status?.configured">
             <el-button
-              link
-              :disabled="busy || conflict || loading || !status.enabled || !row.enabled"
-              @click="reveal(row)"
-              >订阅与凭据</el-button
-            >
-            <el-button link :disabled="busy || conflict || loading" @click="openEditor(row)"
-              >重命名</el-button
-            >
-            <el-button
-              link
-              :disabled="busy || conflict || loading || (!row.enabled && !status.enabled)"
-              @click="operate(row.enabled ? 'disable' : 'enable', row)"
-              >{{ row.enabled ? '禁用' : '启用' }}</el-button
-            >
-            <el-button
-              link
               :disabled="busy || conflict || loading"
-              @click="operate('reset-token', row)"
-              >重置链接</el-button
+              @click="operate(status.enabled ? 'disable' : 'enable')"
+              >{{ status.enabled ? '停用 AnyTLS' : '启用 AnyTLS' }}</el-button
             >
             <el-button
-              link
-              :disabled="busy || conflict || loading"
-              @click="operate('reset-password', row)"
-              >重置密码</el-button
-            >
-            <el-button
-              link
-              type="danger"
-              :disabled="busy || conflict || loading"
-              @click="operate('delete', row)"
-              >删除</el-button
+              type="primary"
+              :disabled="!status.enabled || busy || conflict || loading"
+              @click="openEditor()"
+              >新增用户 / 设备</el-button
             >
           </template>
-        </el-table-column>
-      </el-table>
-      <p class="muted">
-        请在防火墙及云安全组放行用户实际分配的 TCP 端口。禁用用户会同时终止其连接和订阅访问。
-      </p>
-    </template>
-    <template v-else-if="status">
-      <p>先完成 HTTPS 部署，再在服务器执行：</p>
-      <pre class="config-preview">在“部署设置”中初始化 AnyTLS</pre>
-      <p class="muted">安装校验后的 AnyTLS 内核后，可在此创建独立用户和订阅。</p>
-    </template>
+        </div>
+      </header>
+      <template v-if="status?.configured">
+        <el-table :data="status.users" empty-text="暂无用户，请添加用户或设备">
+          <el-table-column prop="name" label="用户 / 设备" min-width="150"
+            ><template #default="{ row }"
+              ><span class="strong">{{ row.name }}</span></template
+            ></el-table-column
+          >
+          <el-table-column prop="id" label="ID" min-width="120"
+            ><template #default="{ row }"
+              ><span class="mono">{{ row.id }}</span></template
+            ></el-table-column
+          >
+          <el-table-column prop="port" label="TCP 端口" width="100"
+            ><template #default="{ row }"
+              ><span class="mono">{{ row.port }}</span></template
+            ></el-table-column
+          >
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }"
+              ><span
+                class="health"
+                :class="!row.enabled ? 'tone-idle' : row.active ? 'tone-ok' : 'tone-warn'"
+                ><span class="status-dot" />{{
+                  !row.enabled ? '已禁用' : row.active ? '运行中' : '已停止'
+                }}</span
+              ></template
+            >
+          </el-table-column>
+          <el-table-column label="操作" min-width="300" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                :disabled="busy || conflict || loading || !status.enabled || !row.enabled"
+                @click="reveal(row)"
+                >订阅与凭据</el-button
+              >
+              <el-button link :disabled="busy || conflict || loading" @click="openEditor(row)"
+                >重命名</el-button
+              >
+              <el-button
+                link
+                :disabled="busy || conflict || loading || (!row.enabled && !status.enabled)"
+                @click="operate(row.enabled ? 'disable' : 'enable', row)"
+                >{{ row.enabled ? '禁用' : '启用' }}</el-button
+              >
+              <el-dropdown
+                trigger="click"
+                :disabled="busy || conflict || loading"
+                @command="(op: string) => operate(op, row)"
+              >
+                <el-button link :disabled="busy || conflict || loading">更多</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="reset-token">重置链接</el-dropdown-item>
+                    <el-dropdown-item command="reset-password">重置密码</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p class="hint" :class="{ padded: !embedded }">
+          适用于支持 AnyTLS 的 Mihomo 客户端，仅
+          TCP。每个用户有独立端口，全部用户跟随服务端当前代理池。 请在防火墙及云安全组放行实际分配的
+          TCP 端口；禁用用户会同时终止其连接和订阅访问。
+        </p>
+      </template>
+      <div v-else-if="status" class="empty-state">
+        <strong>AnyTLS 尚未初始化</strong>
+        <p>先完成 HTTPS 部署，再在<a href="#/setup">“部署设置”</a>中初始化 AnyTLS。</p>
+        <p class="hint">安装校验后的 AnyTLS 内核后，可在此创建独立用户和订阅。</p>
+      </div>
+    </section>
     <el-drawer
       v-model="editor"
       :title="renameID ? '重命名用户' : '新增用户 / 设备'"
+      size="min(440px, 100vw)"
       :close-on-click-modal="false"
       :before-close="
         (done: () => void) => {
@@ -290,38 +310,55 @@ onBeforeUnmount(() => {
         <el-form-item v-if="!renameID" label="TCP 端口（0 为自动分配）"
           ><el-input-number v-model="draft.port" :disabled="busy" :min="0" :max="65535"
         /></el-form-item>
+      </el-form>
+      <p v-if="conflict" role="alert" class="callout callout-warn">
+        配置已变化，输入仍保留。关闭编辑并刷新状态后重试。
+      </p>
+      <template #footer>
+        <el-button :disabled="busy" @click="editor = false">取消</el-button>
         <el-button type="primary" :loading="busy" :disabled="conflict" @click="save"
           >保存用户</el-button
         >
-      </el-form>
-      <p v-if="conflict" role="alert">配置已变化，输入仍保留。关闭编辑并刷新状态后重试。</p>
+      </template>
     </el-drawer>
     <el-dialog
       :model-value="!!credentials"
       :title="`${secretUser} · 订阅与凭据`"
+      width="min(560px, calc(100vw - 32px))"
       @close="credentials = undefined"
     >
       <template v-if="credentials">
-        <p>订阅链接包含此用户的访问权限，请仅交给对应使用者。</p>
-        <el-form label-position="top">
+        <el-alert
+          title="订阅链接包含此用户的访问权限，请仅交给对应使用者。"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+        <el-form label-position="top" class="credential-form">
           <el-form-item label="完整 Clash 配置"
-            ><el-input :model-value="credentials.url" readonly /><el-button
-              @click="copy(credentials.url)"
-              >复制订阅链接</el-button
-            ></el-form-item
+            ><div class="copy-line">
+              <el-input :model-value="credentials.url" readonly /><el-button
+                @click="copy(credentials.url)"
+                >复制订阅链接</el-button
+              >
+            </div></el-form-item
           >
           <el-form-item label="Proxy Provider 节点列表"
-            ><el-input :model-value="credentials.provider" readonly /><el-button
-              @click="copy(credentials.provider)"
-              >复制 Provider 链接</el-button
-            ></el-form-item
+            ><div class="copy-line">
+              <el-input :model-value="credentials.provider" readonly /><el-button
+                @click="copy(credentials.provider)"
+                >复制 Provider 链接</el-button
+              >
+            </div></el-form-item
           >
           <el-form-item label="AnyTLS 密码"
             ><el-input :model-value="credentials.password" type="password" show-password readonly
           /></el-form-item>
         </el-form>
-        <el-button @click="download">下载完整配置</el-button>
+      </template>
+      <template #footer>
+        <el-button type="primary" @click="download">下载完整配置</el-button>
       </template>
     </el-dialog>
-  </section>
+  </div>
 </template>

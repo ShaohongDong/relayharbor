@@ -52,6 +52,8 @@ func (m *Manager) Access() (v AccessConfig, e error) {
 	}
 	e = json.Unmarshal(b, &v)
 	if e == nil {
+		// Older releases stored the literal as entered.
+		v.Host = canonicalHost(v.Host)
 		e = validateAccess(v)
 	}
 	return
@@ -60,12 +62,28 @@ func validateAccess(v AccessConfig) error {
 	if v.Port < 1024 || v.Port > 65535 || v.Port == 18080 {
 		return errors.New("管理 HTTPS 端口无效")
 	}
-	if net.ParseIP(v.Host) == nil {
+	if ip := net.ParseIP(v.Host); ip != nil {
+		// Browsers send the canonical literal in Host; AccessOrigin compares it exactly.
+		if ip.String() != v.Host {
+			return errors.New("管理访问 IP 必须使用规范格式")
+		}
+	} else {
 		if e := ValidateTLSOptions(TLSOptions{Domain: v.Host, Email: "setup@example.com", AcceptTOS: true}); e != nil && v.Host != "localhost" {
 			return errors.New("管理访问地址必须是 IP 或域名")
 		}
 	}
 	return nil
+}
+
+// canonicalHost accepts bracketed or non-canonical IPv6 literals from the CLI.
+func canonicalHost(host string) string {
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
 }
 func (v AccessConfig) URL() string {
 	return "https://" + net.JoinHostPort(v.Host, strconv.Itoa(v.Port))
@@ -86,6 +104,7 @@ func (m *Manager) ConfigureAccess(ctx context.Context, host string, port int) (c
 				port = 18443
 			}
 		}
+		host = canonicalHost(host)
 		if host == "" {
 			host = v.Host
 			if host == "" {
@@ -225,6 +244,9 @@ func (m *Manager) SetupComplete(expected string) error {
 		v, e := m.Access()
 		if e != nil {
 			return e
+		}
+		if v.Completed {
+			return ErrSetupCompleted
 		}
 		v.Completed = true
 		return writeJSON(m.accessPath(), v, 0600, -1)

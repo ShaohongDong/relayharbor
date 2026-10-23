@@ -2,6 +2,7 @@ package manage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -244,5 +245,70 @@ func TestSingBoxVerifiedArchiveAndSymlinkCache(t *testing.T) {
 	os.Symlink(target, r.Binary)
 	if _, e = m.prepareSingBox(context.Background(), archive); e == nil {
 		t.Fatal("symlink cache accepted")
+	}
+}
+
+func TestAnyTLSUserEgressRoute(t *testing.T) {
+	m, core, s, calls := anyTLSFixture(t)
+	ctx := context.Background()
+	c := config.Initial("127.0.0.1:1080", false)
+	c.Profiles = append(c.Profiles, config.Profile{Name: "office", Type: "pool", Nodes: []config.Node{{ID: "a", Type: "http", Addr: "proxy.example:8080"}}, Probe: &config.Probe{Type: "tcp", Addr: "example.com:443", Interval: 30, Timeout: 5}})
+	c.Entries = []config.Entry{{Name: "branch", Addr: "127.0.0.1:8443", Users: []config.Auth{{Username: "b", Password: "branch-secret"}}, Profile: "office"}}
+	if e := writeJSON(m.P.Manifest, c, 0600, -1); e != nil {
+		t.Fatal(e)
+	}
+	if e := m.changeAnyTLS(ctx, core, s, "add", AnyTLSRequest{ID: "a", Name: "a", Profile: "missing"}); e == nil {
+		t.Fatal("unknown profile accepted")
+	}
+	for _, id := range []string{"a", "b"} {
+		if e := m.changeAnyTLS(ctx, core, s, "add", AnyTLSRequest{ID: id, Name: id}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if s.Users[0].Port == 8443 {
+		t.Fatal("entry port was allocated to AnyTLS")
+	}
+	gateway := func(id string) string {
+		var v map[string]any
+		b, e := os.ReadFile(filepath.Join(m.anyTLSDir(id), "config.json"))
+		if e != nil || json.Unmarshal(b, &v) != nil {
+			t.Fatal(e)
+		}
+		return v["outbounds"].([]any)[0].(map[string]any)["username"].(string)
+	}
+	if gateway("a") != "internal" {
+		t.Fatal("unbound user must follow activeProfile")
+	}
+	*calls = nil
+	if e := m.changeAnyTLS(ctx, core, s, "route", AnyTLSRequest{ID: "a", Profile: "office"}); e != nil {
+		t.Fatal(e)
+	}
+	if s.Users[0].Profile != "office" || gateway("a") != config.RouteProfile("internal", "office") || gateway("b") != "internal" {
+		t.Fatal("route not written", s.Users[0])
+	}
+	restarted := false
+	for _, call := range *calls {
+		if strings.Contains(call, anyTLSUnit("b")) {
+			t.Fatal("other user touched", call)
+		}
+		restarted = restarted || call == "restart "+anyTLSUnit("a")
+	}
+	if !restarted {
+		t.Fatal("bound user not restarted", *calls)
+	}
+	if e := m.changeAnyTLS(ctx, core, s, "route", AnyTLSRequest{ID: "a", Profile: "missing"}); e == nil || s.Users[0].Profile != "office" {
+		t.Fatal("unknown profile route accepted")
+	}
+	removed := c.Clone()
+	removed.Entries = nil
+	removed.Profiles = removed.Profiles[:1]
+	if e := m.anyTLSBindings(removed); e == nil || !strings.Contains(e.Error(), "a") {
+		t.Fatal("removing a pinned profile was allowed", e)
+	}
+	if e := m.changeAnyTLS(ctx, core, s, "route", AnyTLSRequest{ID: "a"}); e != nil || gateway("a") != "internal" {
+		t.Fatal("route reset", e)
+	}
+	if e := m.anyTLSBindings(removed); e != nil {
+		t.Fatal(e)
 	}
 }

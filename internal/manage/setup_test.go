@@ -49,6 +49,41 @@ func TestAccessCertificateAndHandoff(t *testing.T) {
 		t.Fatal("invalid host")
 	}
 }
+func TestAccessIPv6Literal(t *testing.T) {
+	for in, want := range map[string]string{"[2001:DB8:0::1]": "2001:db8::1", "2001:db8::1": "2001:db8::1", "192.0.2.5": "192.0.2.5", "panel.example.com": "panel.example.com"} {
+		if got := canonicalHost(in); got != want {
+			t.Fatalf("canonicalHost(%q) = %q", in, got)
+		}
+	}
+	for _, host := range []string{"2001:DB8::1", "fe80::1%eth0", "[2001:db8::1]"} {
+		if validateAccess(AccessConfig{Host: host, Port: 18443}) == nil {
+			t.Fatal("non-canonical or scoped IPv6 accepted", host)
+		}
+	}
+	m := fixtureManager(t)
+	if e := os.MkdirAll(filepath.Dir(m.P.Lock), 0700); e != nil {
+		t.Fatal(e)
+	}
+	// Records written by older releases are canonicalized on read.
+	if e := writeJSON(m.accessPath(), AccessConfig{Host: "2001:DB8:0::1", Port: 18443}, 0600, -1); e != nil {
+		t.Fatal(e)
+	}
+	v, e := m.Access()
+	if e != nil || v.Host != "2001:db8::1" || v.URL() != "https://[2001:db8::1]:18443" {
+		t.Fatal("stored IPv6 host", v, e)
+	}
+	cert, e := m.AccessCertificate()
+	if e != nil {
+		t.Fatal(e)
+	}
+	leaf, e := x509.ParseCertificate(cert.Certificate[0])
+	if e != nil || leaf.VerifyHostname("2001:db8::1") != nil {
+		t.Fatal("IPv6 certificate SAN", e)
+	}
+	if m.AccessOrigin("[2001:db8::1]:18443", true) != "https://[2001:db8::1]:18443" {
+		t.Fatal("IPv6 Host header not accepted as access origin")
+	}
+}
 func TestInterruptedJobAndOwnership(t *testing.T) {
 	m := fixtureManager(t)
 	j := SetupJob{ID: "0123456789abcdef0123456789abcdef", Kind: "tls", Status: "running", Started: time.Now().Add(-time.Minute)}
@@ -96,5 +131,31 @@ func TestSetupIdempotency(t *testing.T) {
 	}
 	if _, e = m.StartSetup(context.Background(), "anytls", "short", "old", TLSOptions{}); e == nil {
 		t.Fatal("short key accepted")
+	}
+}
+func TestSetupClosedAfterCompletion(t *testing.T) {
+	m, _, _ := hotFixture(t)
+	if e := os.MkdirAll(filepath.Dir(m.P.Lock), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := writeJSON(m.accessPath(), AccessConfig{Host: "192.0.2.5", Port: 18443}, 0600, -1); e != nil {
+		t.Fatal(e)
+	}
+	if e := m.SetupComplete("before"); e != nil {
+		t.Fatal(e)
+	}
+	if e := m.SetupComplete("before"); !errors.Is(e, ErrSetupCompleted) {
+		t.Fatal("completed twice", e)
+	}
+	// Completion is checked before any service is managed or a job is started.
+	o := TLSOptions{Domain: "example.com", Email: "admin@example.com", AcceptTOS: true}
+	if _, e := m.StartSetup(context.Background(), "tls", "a-valid-idempotency-key", "before", o); !errors.Is(e, ErrSetupCompleted) {
+		t.Fatal("tls setup after completion", e)
+	}
+	if e := writeJSON(m.anyTLSPath(), AnyTLSState{Schema: 1, Revision: "r1", Domain: "example.com"}, 0600, -1); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := m.StartSetup(context.Background(), "anytls", "another-idempotency-key", "before", TLSOptions{}); !errors.Is(e, ErrAnyTLSConfigured) {
+		t.Fatal("anytls initialized twice", e)
 	}
 }

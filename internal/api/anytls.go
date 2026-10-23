@@ -38,7 +38,7 @@ func (h *Handler) anyTLS(r *http.Request, path string, body []byte) (any, string
 			switch op {
 			case "enable", "disable":
 				op = "user-" + op
-			case "rename", "delete", "reset-token", "reset-password", "credentials":
+			case "rename", "delete", "reset-token", "reset-password", "credentials", "route":
 			default:
 				op = ""
 			}
@@ -66,9 +66,12 @@ func (h *Handler) anyTLS(r *http.Request, path string, body []byte) (any, string
 			if value == nil {
 				return nil, "", fail(400, "invalid_request", "字段不能为 null")
 			}
-			if !(op == "add" && (key == "id" || key == "name" || key == "port")) && !(op == "rename" && key == "name") {
+			if !(op == "add" && (key == "id" || key == "name" || key == "port" || key == "profile")) && !(op == "rename" && key == "name") && !(op == "route" && key == "profile") {
 				return nil, "", fail(400, "invalid_request", "操作包含不支持的字段")
 			}
+		}
+		if _, set := obj["profile"]; op == "route" && !set {
+			return nil, "", fail(400, "invalid_request", "需要 profile 字段，空字符串表示跟随当前 profile")
 		}
 		d := json.NewDecoder(bytes.NewReader(body))
 		d.DisallowUnknownFields()

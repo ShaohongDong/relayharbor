@@ -198,3 +198,156 @@ func TestRealRouting(t *testing.T) {
 	testkit.Wait(t, 5*time.Second, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.workers[retained.key] == nil })
 	t.Log("PASS removed workers drain existing streams before exit")
 }
+
+func TestRealRoutingIPv6(t *testing.T) {
+	binary := testkit.GOST(t)
+	if l, e := net.Listen("tcp", "[::1]:0"); e != nil {
+		t.Skip("IPv6 loopback unavailable:", e)
+	} else {
+		l.Close()
+	}
+	echo := testkit.EchoOn(t, "::1")
+	auth := config.Auth{Username: "upstream", Password: "test-upstream-password"}
+	upstream := testkit.AddrOn(t, "::1")
+	testkit.Start(t, binary, native.Service(upstream, []config.Auth{auth}, false), upstream)
+	cfg := config.Initial(testkit.AddrOn(t, "::1"), false)
+	cfg.Profiles = append(cfg.Profiles, config.Profile{Name: "v6", Type: "pool", Nodes: []config.Node{{ID: "v6", Type: "socks5", Addr: upstream, Auth: &auth}}, Probe: &config.Probe{Type: "tcp", Addr: echo, Interval: 1, Timeout: 1}})
+	if e := cfg.Validate(false); e != nil {
+		t.Fatal(e)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := New(Input{cfg, native.Options{Gateway: testkit.Addr(t), Auth: config.Auth{Username: "internal", Password: "test-internal-password"}}, binary, "initial"}, t.TempDir())
+	r.Command = testkit.Command
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if e := <-done; e != nil && e != context.Canceled {
+			t.Error(e)
+		}
+	})
+	testkit.Wait(t, 8*time.Second, func() bool { s := r.Status(); return s.Ready && testkit.Ready(cfg) })
+	direct := testkit.Connect(t, cfg, echo)
+	defer direct.Close()
+	if e := testkit.Payload(direct); e != nil {
+		t.Fatal(e)
+	}
+	testkit.CheckAuth(t, cfg)
+	t.Log("PASS IPv6 listener and direct IPv6 target")
+	cfg.ActiveProfile = "v6"
+	rev := config.Secret()
+	if e := r.Prepare(cfg, rev); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := r.Commit(rev); e != nil {
+		t.Fatal(e)
+	}
+	testkit.Wait(t, 8*time.Second, func() bool { return r.Status().HealthyNodes == 1 })
+	pool := testkit.Connect(t, cfg, echo)
+	defer pool.Close()
+	if e := testkit.Payload(pool); e != nil {
+		t.Fatal(e)
+	}
+	t.Log("PASS IPv6 SOCKS5 upstream, IPv6 probe and IPv6 target")
+}
+
+func TestRealEgressRoutes(t *testing.T) {
+	binary := testkit.GOST(t)
+	echo := testkit.Echo(t)
+	auth := config.Auth{Username: "upstream", Password: "test-upstream-password"}
+	upstream := testkit.Addr(t)
+	testkit.Start(t, binary, native.Service(upstream, []config.Auth{auth}, false), upstream)
+	probe := &config.Probe{Type: "tcp", Addr: echo, Interval: 1, Timeout: 1}
+	cfg := config.Initial(testkit.Addr(t), false)
+	cfg.Profiles = append(cfg.Profiles,
+		config.Profile{Name: "live", Type: "pool", Nodes: []config.Node{{ID: "live", Type: "socks5", Addr: upstream, Auth: &auth}}, Probe: probe},
+		config.Profile{Name: "dead", Type: "pool", Nodes: []config.Node{{ID: "dead", Type: "socks5", Addr: testkit.Addr(t), Auth: &auth}}, Probe: probe})
+	entry := config.Entry{Name: "office", Addr: testkit.Addr(t), Users: []config.Auth{{Username: "office", Password: "test-office-password"}}, Profile: "dead"}
+	cfg.Entries = []config.Entry{entry}
+	if e := cfg.Validate(false); e != nil {
+		t.Fatal(e)
+	}
+	gateway := native.Options{Gateway: testkit.Addr(t), Auth: config.Auth{Username: "internal", Password: "test-internal-password"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := New(Input{cfg, gateway, binary, "initial"}, t.TempDir())
+	r.Command = testkit.Command
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if e := <-done; e != nil && e != context.Canceled {
+			t.Error(e)
+		}
+	})
+	testkit.Wait(t, 8*time.Second, func() bool {
+		s := r.Status()
+		return s.Ready && testkit.Ready(cfg) && len(s.Entries) == 1 && s.Entries[0].PID > 0 && s.HealthyNodes == 0
+	})
+	dial := func(addr string, a config.Auth) (net.Conn, error) {
+		dctx, stop := context.WithTimeout(ctx, 8*time.Second)
+		defer stop()
+		conn, _, err := socks.Dial(dctx, testkit.Local(addr), a, socks.Connect, socks.Target(echo))
+		return conn, err
+	}
+	direct := testkit.Connect(t, cfg, echo)
+	defer direct.Close()
+	if e := testkit.Payload(direct); e != nil {
+		t.Fatal(e)
+	}
+	if c, e := dial(entry.Addr, entry.Users[0]); e == nil {
+		c.Close()
+		t.Fatal("entry bound to a dead pool forwarded traffic")
+	}
+	if c, e := dial(entry.Addr, cfg.Listener.Users[0]); e == nil {
+		c.Close()
+		t.Fatal("entry accepted a shared listener user")
+	}
+	t.Log("PASS shared listener direct while entry fails closed on its own dead pool")
+	pinned := gateway.Auth
+	pinned.Username = config.RouteProfile(gateway.Auth.Username, "live")
+	testkit.Wait(t, 8*time.Second, func() bool { s := r.Status(); return s.Nodes[0].Healthy != nil && *s.Nodes[0].Healthy })
+	c, e := dial(gateway.Gateway, pinned)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c.Close()
+	for _, bad := range []string{config.RouteProfile(gateway.Auth.Username, "missing"), config.RouteEntry(gateway.Auth.Username, "missing"), "internal:other"} {
+		a := gateway.Auth
+		a.Username = bad
+		if c, e := dial(gateway.Gateway, a); e == nil {
+			c.Close()
+			t.Fatalf("gateway accepted route %q", bad)
+		}
+	}
+	t.Log("PASS pinned profile route and unknown routes rejected")
+	pid := r.Status().Entries[0].PID
+	held := testkit.Connect(t, cfg, echo)
+	defer held.Close()
+	cfg.Entries[0].Profile = "live"
+	rev := config.Secret()
+	if e := r.Prepare(cfg, rev); e != nil {
+		t.Fatal(e)
+	}
+	s, e := r.Commit(rev)
+	if e != nil || s.Entries[0].Profile != "live" || !s.Entries[0].Available || s.Entries[0].PID != pid || s.ActiveProfile != "direct" {
+		t.Fatalf("entry rebind ack: %+v %v", s, e)
+	}
+	c, e = dial(entry.Addr, entry.Users[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e := testkit.Payload(c); e != nil {
+		t.Fatal(e)
+	}
+	c.Close()
+	if e := testkit.Payload(held); e != nil {
+		t.Fatal(e)
+	}
+	t.Log("PASS entry rebinding is hot and keeps entry PID and existing streams")
+	moved := cfg.Clone()
+	moved.Entries[0].Addr = testkit.Addr(t)
+	if r.Prepare(moved, "moved") == nil {
+		t.Fatal("entry address change was hot-applied")
+	}
+	t.Log("PASS entry address change requires restart")
+}

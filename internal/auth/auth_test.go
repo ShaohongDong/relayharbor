@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -170,5 +171,28 @@ func TestPasswordLengthAndRateLimit(t *testing.T) {
 	}
 	if a.allowed(r) {
 		t.Fatal("rate limit")
+	}
+}
+func TestRateLimitGroupsIPv6Prefix(t *testing.T) {
+	a := New(&Store{Path: filepath.Join(t.TempDir(), "auth.json")})
+	r := httptest.NewRequest("POST", "https://localhost/", nil)
+	for i := 0; i < 10; i++ {
+		r.RemoteAddr = fmt.Sprintf("[2001:db8:1:2::%x]:1234", i+1)
+		if !a.allowed(r) {
+			t.Fatal(i)
+		}
+	}
+	r.RemoteAddr = "[2001:db8:1:2:ffff::1]:1234"
+	if a.allowed(r) {
+		t.Fatal("rotating addresses inside one /64 bypassed the limit")
+	}
+	for _, addr := range []string{"[2001:db8:1:3::1]:1234", "192.0.2.1:1234", "[::ffff:192.0.2.2]:1234"} {
+		r.RemoteAddr = addr
+		if !a.allowed(r) {
+			t.Fatal("independent client limited", addr)
+		}
+	}
+	if attemptKey("::ffff:192.0.2.2") != "192.0.2.2" {
+		t.Fatal("IPv4-mapped address must share the IPv4 bucket")
 	}
 }

@@ -101,11 +101,9 @@ test('real console controls verified GOST through systemd without restarting its
     ),
   ).toBe(0)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '打开导航' }).click()
   await page.getByRole('link', { name: '代理池与节点' }).click()
   await expect(page.getByRole('button', { name: '添加节点' })).toBeVisible()
   await page.screenshot({ animations: 'disabled', path: '../test-results/console-real-mobile.png' })
-  await page.getByRole('button', { name: '打开导航' }).click()
   await page.getByRole('button', { name: '断开认证' }).click()
   await expect(page.getByRole('button', { name: '登录控制台' })).toBeVisible()
 })

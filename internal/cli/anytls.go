@@ -18,7 +18,7 @@ func anyTLSCommand(ctx context.Context, m *manage.Manager, args []string, out io
 	args = args[1:]
 	if op == "user" {
 		if len(args) == 0 {
-			return errors.New("用法：anytls user add|rename|enable|disable|delete|reset-token|reset-password|credentials --id ID")
+			return errors.New("用法：anytls user add|rename|route|enable|disable|delete|reset-token|reset-password|credentials --id ID")
 		}
 		op = args[0]
 		args = args[1:]
@@ -36,9 +36,13 @@ func anyTLSCommand(ctx context.Context, m *manage.Manager, args []string, out io
 			f.StringVar(&req.ID, "id", "", "")
 			f.StringVar(&req.Name, "name", "", "")
 			f.IntVar(&req.Port, "port", 0, "")
+			f.StringVar(&req.Profile, "profile", "", "")
 		case "rename":
 			f.StringVar(&req.ID, "id", "", "")
 			f.StringVar(&req.Name, "name", "", "")
+		case "route":
+			f.StringVar(&req.ID, "id", "", "")
+			f.StringVar(&req.Profile, "profile", "", "")
 		case "user-enable", "user-disable", "delete", "reset-token", "reset-password", "credentials":
 			f.StringVar(&req.ID, "id", "", "")
 		}

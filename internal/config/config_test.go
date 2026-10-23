@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -98,5 +99,105 @@ func TestUnicodeAndPortSyntax(t *testing.T) {
 	}
 	if Endpoint("127.0.0.1:+1080", true) == nil {
 		t.Fatal("signed port accepted")
+	}
+}
+func TestIPv6Endpoints(t *testing.T) {
+	for _, addr := range []string{"[::]:1080", "[::1]:1080", "[2001:db8::1]:1080"} {
+		if Endpoint(addr, true) != nil || Endpoint(addr, false) != nil {
+			t.Fatal("IPv6 endpoint rejected", addr)
+		}
+	}
+	for _, addr := range []string{"::1:1080", "[fe80::1%eth0]:1080", "[proxy.example]:1080", "[::]:80"} {
+		if Endpoint(addr, true) == nil {
+			t.Fatal("invalid listener accepted", addr)
+		}
+	}
+	if Endpoint("[example.com]:443", false) == nil {
+		t.Fatal("bracketed hostname accepted")
+	}
+	want := "0.0.0.0:1080"
+	if DualStack() {
+		want = "[::]:1080"
+	}
+	if DefaultListen() != want || Endpoint(DefaultListen(), true) != nil {
+		t.Fatal("default listener", DefaultListen())
+	}
+}
+func entryFixture() Config {
+	c := fixture()
+	c.Entries = []Entry{{Name: "office", Addr: "127.0.0.1:1081", Users: []Auth{{Username: "alice", Password: "alice-secret"}}, Profile: "mixed"}}
+	return c
+}
+func TestEntries(t *testing.T) {
+	base := entryFixture()
+	if e := base.Validate(false); e != nil {
+		t.Fatal(e)
+	}
+	direct := base.Clone()
+	direct.Entries[0].Profile, direct.Entries[0].UDP = "direct", true
+	if e := direct.Validate(false); e != nil {
+		t.Fatal(e)
+	}
+	for name, change := range map[string]func(*Config){
+		"bad-name":       func(c *Config) { c.Entries[0].Name = "a:b" },
+		"duplicate-name": func(c *Config) { e := c.Entries[0]; e.Addr = "127.0.0.1:1082"; c.Entries = append(c.Entries, e) },
+		"listener-port":  func(c *Config) { c.Entries[0].Addr = "[::1]:1080" },
+		"entry-port": func(c *Config) {
+			e := c.Entries[0]
+			e.Name = "other"
+			e.Addr = "[::1]:1081"
+			c.Entries = append(c.Entries, e)
+		},
+		"no-users":        func(c *Config) { c.Entries[0].Users = nil },
+		"duplicate-user":  func(c *Config) { c.Entries[0].Users = append(c.Entries[0].Users, c.Entries[0].Users[0]) },
+		"missing-profile": func(c *Config) { c.Entries[0].Profile = "missing" },
+		"pool-udp":        func(c *Config) { c.Entries[0].UDP = true },
+		"privileged":      func(c *Config) { c.Entries[0].Addr = "127.0.0.1:443" },
+		"removed-profile": func(c *Config) { c.Profiles = c.Profiles[:1] },
+	} {
+		c := base.Clone()
+		change(&c)
+		if c.Validate(false) == nil {
+			t.Fatalf("%s: unsafe entry accepted", name)
+		}
+	}
+	redacted := string(Bytes(base.Redacted()))
+	if strings.Contains(redacted, "alice-secret") || !strings.Contains(redacted, `"passwordSet": true`) {
+		t.Fatal("entry password leaked")
+	}
+	merged, e := Parse([]byte(redacted), &base, false)
+	if e != nil || !merged.Equal(base) {
+		t.Fatalf("entry password merge: %v", e)
+	}
+	renamed := strings.Replace(redacted, `"name": "office"`, `"name": "branch"`, 1)
+	if _, e := Parse([]byte(renamed), &base, false); e == nil {
+		t.Fatal("renamed entry kept the old password")
+	}
+	noEntries, e := Parse(Bytes(fixture()), nil, false)
+	if e != nil || noEntries.Entries != nil || strings.Contains(string(Bytes(noEntries)), "entries") {
+		t.Fatal("entries must stay optional")
+	}
+	extra := strings.Replace(string(Bytes(base)), `"profile": "mixed"`, `"profile": "mixed", "extra": 1`, 1)
+	if _, e := Parse([]byte(extra), nil, false); e == nil {
+		t.Fatal("unknown entry field accepted")
+	}
+	static := base.Clone()
+	static.Entries[0].Profile = "direct"
+	if string(Bytes(static.Static())) != string(Bytes(base.Static())) {
+		t.Fatal("profile rebinding must not be static")
+	}
+	static.Entries[0].Users[0].Password = "changed"
+	if string(Bytes(static.Static())) == string(Bytes(base.Static())) {
+		t.Fatal("entry user change must be static")
+	}
+}
+func TestExampleProfiles(t *testing.T) {
+	b, e := os.ReadFile("../../examples/profiles.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	c, e := Parse(b, nil, true)
+	if e != nil || len(c.Entries) != 1 {
+		t.Fatalf("example: %v", e)
 	}
 }

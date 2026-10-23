@@ -1,5 +1,18 @@
 # 验证记录
 
+## IPv6 支持（2026-10-23，Asia/Shanghai）
+
+新生成配置在主机可绑定 `[::]` 时默认监听 `[::]:1080`（否则 `0.0.0.0:1080`），已安装配置不迁移。AnyTLS sing-box 实例与端口占用检查改用同一通配地址；Nginx 模板仅在主机支持 IPv6 时输出 `listen [::]`，所有权校验接受两种变体。管理访问地址接受 `[v6]` 并规范化为压缩小写形式（含旧记录读取时），保证与浏览器 `Host` 头一致；登录限流对 IPv6 按 /64 聚合，IPv4 映射地址归入 IPv4。安装脚本建议地址跳过链路本地 `fe80:`，并剥离方括号。
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| 静态检查 | Prettier、gofmt、go vet、Bash 语法、Git 空白检查逐项手动执行通过（本机 `make check` 因 `GOTOOLCHAIN=local` 与本地 Go 1.27.0 不符而无法直接运行，Go 1.27.2 经自动工具链使用） |
+| Go 全量与 race | `go test ./internal/...`、`go test -race ./internal/...` 通过 |
+| 真实 amd64 协议 | `GOST_TEST_REAL=1`：新增 `TestRealRoutingIPv6`（`[::1]` 入口、IPv6 SOCKS5 上游、IPv6 TCP 探测与目标）与原 `TestRealRouting` 通过；`TestAnyTLSProtocol` 以 `::` 监听、IPv4 客户端通过 |
+| 前端 | 9 项单元测试、8 项模拟 API 浏览器测试通过（含 `[::]:1081` 入口编辑）；真实 systemd 浏览器用例跳过 |
+
+边界：未运行 `make integration` 七环境矩阵；Docker 环境默认没有公网 IPv6，IPv6 仅在本机回环验证。未进行公网 AAAA、IPv6 防火墙/云安全组、Let's Encrypt IPv6 验证或内核禁用 IPv6 主机的实机验收（该分支仅由模板单元测试覆盖）。入口 UDP 经 IPv6 的转发未单独验证。源码未提交、未推送。
+
 ## 一键安装、密码登录与网页部署向导（2026-10-20，Asia/Shanghai）
 
 安装脚本支持独立下载稳定发行包并校验，自动创建默认认证 SOCKS 配置、启动服务并提供自签名 HTTPS 初始化入口。一次性初始化码只保存摘要，管理员密码使用 PBKDF2；浏览器使用 Secure/HttpOnly 会话 Cookie、CSRF 与 Origin 校验，管理 Bearer 已移除。root CLI 使用双向校验 UID 的 Unix socket。网页支持 HTTPS/AnyTLS 后台部署任务、任务恢复、基础模式及密码修改；正式 HTTPS 就绪后五分钟关闭临时入口。新增 tag 发布 workflow，未创建 tag 或实际发布。

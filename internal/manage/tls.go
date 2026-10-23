@@ -26,6 +26,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/ShaohongDong/relayharbor/internal/config"
 )
 
 const LEGOVersion = "5.5.2"
@@ -327,6 +329,18 @@ WantedBy=timers.target
 `
 
 func (m *Manager) tlsSite(c *TLSConfig, https bool, challengeDomain string) string {
+	return m.tlsSiteFor(c, https, challengeDomain, config.DualStack())
+}
+
+// ownedTLSSite accepts either IPv6 variant: the host may have toggled IPv6
+// between writing and verifying the generated site.
+func (m *Manager) ownedTLSSite(b []byte, c *TLSConfig) bool {
+	return string(b) == m.tlsSiteFor(c, false, "", true) || string(b) == m.tlsSiteFor(c, false, "", false)
+}
+
+// tlsSiteFor omits IPv6 listeners on kernels with IPv6 disabled, where nginx
+// would otherwise fail to bind [::].
+func (m *Manager) tlsSiteFor(c *TLSConfig, https bool, challengeDomain string, ipv6 bool) string {
 	p := m.tlsPaths()
 	domains := c.Domain
 	if challengeDomain != "" && challengeDomain != c.Domain {
@@ -346,11 +360,14 @@ server {
     location ^~ /sub/ { access_log off; error_log /dev/null; return 404; }
 }
 `, domains, p.webroot, "return 404;")
+	if !ipv6 {
+		http = strings.Replace(http, "    listen [::]:80 default_server;\n", "", 1)
+	}
 	if !https {
 		return http
 	}
 	http = strings.Replace(http, "return 404;", "return 308 https://"+c.Domain+"$request_uri;", 1)
-	return http + fmt.Sprintf(`server {
+	site := http + fmt.Sprintf(`server {
     listen 443 ssl default_server;
     listen [::]:443 ssl default_server;
     server_name %s;
@@ -385,6 +402,10 @@ server {
     }
 }
 `, c.Domain, c.Domain, p.root, p.root)
+	if !ipv6 {
+		site = strings.Replace(site, "    listen [::]:443 ssl default_server;\n", "", 1)
+	}
+	return site
 }
 
 func (m *Manager) nginxReload(ctx context.Context) error {
@@ -576,7 +597,7 @@ func (m *Manager) TLSSetup(ctx context.Context, o TLSOptions) error {
 					}
 					if path == p.site {
 						b, re := os.ReadFile(path)
-						if re == nil && string(b) == m.tlsSite(c, false, "") {
+						if re == nil && m.ownedTLSSite(b, c) {
 							continue
 						}
 					}
@@ -1213,7 +1234,7 @@ func (m *Manager) disableTLSProvisioning(ctx context.Context, c *TLSConfig, purg
 			return errors.New("发现外部 HTTPS 配置链接")
 		}
 		b, e := os.ReadFile(path)
-		if e != nil || string(b) != text {
+		if e != nil || (string(b) != text && !(path == p.site && m.ownedTLSSite(b, c))) {
 			return errors.New("半安装 HTTPS 资源被外部修改，拒绝清理")
 		}
 	}

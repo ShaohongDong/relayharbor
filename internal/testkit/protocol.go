@@ -85,18 +85,22 @@ func GOST(t *testing.T) string {
 		}
 	}
 }
-func Addr(t *testing.T) string {
+func Addr(t *testing.T) string { t.Helper(); return AddrOn(t, "127.0.0.1") }
+
+// AddrOn reserves a free TCP port on host, for example "::1".
+func AddrOn(t *testing.T, host string) string {
 	t.Helper()
-	l, e := net.Listen("tcp", "127.0.0.1:0")
+	l, e := net.Listen("tcp", net.JoinHostPort(host, "0"))
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer l.Close()
 	return l.Addr().String()
 }
-func Echo(t *testing.T) string {
+func Echo(t *testing.T) string { t.Helper(); return EchoOn(t, "127.0.0.1") }
+func EchoOn(t *testing.T, host string) string {
 	t.Helper()
-	l, e := net.Listen("tcp", "127.0.0.1:0")
+	l, e := net.Listen("tcp", net.JoinHostPort(host, "0"))
 	if e != nil {
 		t.Fatal(e)
 	}

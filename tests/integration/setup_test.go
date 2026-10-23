@@ -95,6 +95,13 @@ func verifySetupAccess(t *testing.T) {
 	if status != 200 {
 		t.Fatal("basic setup completion", status)
 	}
+	// The wizard is closed for good once completed; AnyTLS initialization stays available.
+	for _, path := range []string{"/setup/complete", "/setup/credentials", "/tls/setup"} {
+		status, b = call("POST", path, "{}", envelope.Revision, "integration-closed-setup")
+		if status != 409 || !strings.Contains(string(b), "setup_completed") {
+			t.Fatalf("%s after completion: %d %s", path, status, b)
+		}
+	}
 	// Without HTTPS, AnyTLS must fail as a durable background job; retries of
 	// the same request return that job rather than launching a second process.
 	status, b = call("POST", "/anytls/setup", "{}", envelope.Revision, "integration-idempotent-job")

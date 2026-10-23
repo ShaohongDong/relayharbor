@@ -36,6 +36,8 @@ export function createConsole() {
     busy = ref(false),
     refreshing = ref(false)
   const view = ref<View>(viewFromHash())
+  // Unknown until login; the setup wizard is the only page before completion and gone after it.
+  const setupDone = ref<boolean>()
   const error = ref(''),
     disconnected = ref(false),
     conflict = ref(false)
@@ -162,7 +164,12 @@ export function createConsole() {
           ? 'ok'
           : 'warn',
   )
+  function allowed(v: View): View {
+    if (setupDone.value === false) return 'setup'
+    return v === 'setup' ? 'overview' : v
+  }
   function go(v: View) {
+    v = allowed(v)
     view.value = v
     if (location.hash !== `#/${v}`) location.hash = `#/${v}`
   }
@@ -173,6 +180,7 @@ export function createConsole() {
   }
   function disconnect() {
     token.value = ''
+    setupDone.value = undefined
     base.value = undefined
     draft.value = undefined
     status.value = undefined
@@ -244,8 +252,8 @@ export function createConsole() {
       try {
         await load()
         const setup = await request<{ completed: boolean }>(token.value, '/setup')
-        if (!setup.data.completed) go('setup')
-        else if (view.value === 'setup') go('overview')
+        setupDone.value = setup.data.completed
+        go(view.value)
       } catch (e) {
         disconnect()
         throw e
@@ -313,7 +321,7 @@ export function createConsole() {
       if (
         restart.value &&
         !(await confirm(
-          '入口地址、账号或 UDP 设置发生变化，需要重启转发服务；已有连接会中断。是否应用？',
+          '入口或附加入口的地址、账号或 UDP 设置发生变化，需要重启转发服务；已有连接会中断。是否应用？',
         ))
       )
         return
@@ -453,12 +461,21 @@ export function createConsole() {
     if (i >= 0) draft.value!.profiles.splice(i, 1, p)
     else draft.value!.profiles.push(p)
     if (draft.value!.activeProfile === profileOrigin.value) draft.value!.activeProfile = p.name
+    draft.value!.entries?.forEach((e) => {
+      if (profileOrigin.value && e.profile === profileOrigin.value) e.profile = p.name
+      if (e.profile === p.name && p.type !== 'direct') e.udp = false
+    })
     profileOpen.value = false
     page.value = 1
   }
   async function removeProfile(name: string) {
     if (draft.value!.activeProfile === name) {
       ElMessage.error('请先选择另一个“应用后出口”，再删除此 profile')
+      return
+    }
+    const bound = draft.value!.entries?.find((e) => e.profile === name)
+    if (bound) {
+      ElMessage.error(`附加入口 ${bound.name} 正在使用此 profile，请先修改其出口`)
       return
     }
     if (!(await confirm(`从草稿中删除 ${name} 及其所有节点？`))) return
@@ -484,7 +501,13 @@ export function createConsole() {
     }
   }
   function hashChanged() {
-    view.value = viewFromHash()
+    const v = viewFromHash()
+    if (allowed(v) !== v) go(v)
+    else view.value = v
+  }
+  function setupFinished() {
+    setupDone.value = true
+    go('overview')
   }
   let timer: ReturnType<typeof setInterval>
   onMounted(() => {
@@ -505,6 +528,7 @@ export function createConsole() {
     busy,
     refreshing,
     view,
+    setupDone,
     error,
     disconnected,
     conflict,
@@ -538,6 +562,7 @@ export function createConsole() {
     serviceLabel,
     serviceTone,
     go,
+    setupFinished,
     sortChanged,
     showError,
     login,

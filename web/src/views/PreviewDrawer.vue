@@ -12,9 +12,6 @@ const { previewOpen, preview, changeSummary, restart } = useConsole()
         restart ? '应用时需要重启' : '可热更新'
       }}</el-tag>
     </div>
-    <p class="hint">
-      仅显示脱敏预览；密码不会出现在此处。校验为静态检查，实际应用仍可能因运行环境失败。
-    </p>
     <pre class="code-block" data-testid="config-preview">{{ preview }}</pre>
   </el-drawer>
 </template>

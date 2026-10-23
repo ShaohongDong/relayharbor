@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { request } from './api'
 import AnyTLSPanel from './AnyTLSPanel.vue'
 const props = defineProps<{ token: string }>()
@@ -27,9 +28,7 @@ const busy = ref(false),
   job = ref<Job>(),
   tlsReady = ref(false),
   anyReady = ref(false)
-const credentials = ref<unknown>(),
-  password = ref(''),
-  oldPassword = ref('')
+const credentials = ref<unknown>()
 let timer: ReturnType<typeof setInterval>
 async function refresh() {
   const s = await request<Setup>(props.token, '/setup')
@@ -72,7 +71,16 @@ function start(kind: 'tls' | 'anytls') {
     ).data
   })
 }
-function finish() {
+async function finish() {
+  try {
+    await ElMessageBox.confirm(
+      '完成后部署设置页面将永久关闭，之后修改域名需使用服务器 CLI。',
+      '完成部署设置',
+      { confirmButtonText: '进入控制台', cancelButtonText: '返回', type: 'warning' },
+    )
+  } catch {
+    return
+  }
   void action(async () => {
     await request(props.token, '/setup/complete', 'POST', {}, revision.value)
     emit('done')
@@ -83,17 +91,6 @@ function showCredentials() {
     credentials.value = (
       await request(props.token, '/setup/credentials', 'POST', {}, revision.value)
     ).data
-  })
-}
-function changePassword() {
-  void action(async () => {
-    await request(props.token, '/auth/password', 'POST', {
-      oldPassword: oldPassword.value,
-      password: password.value,
-    })
-    oldPassword.value = ''
-    password.value = ''
-    location.reload()
   })
 }
 onMounted(() => {
@@ -109,10 +106,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <section class="page-stack setup" aria-label="部署向导">
-    <div class="callout callout-info">
-      <strong>基础服务已启动</strong>
-      <p>可直接进入控制台，或继续配置域名 HTTPS 和 AnyTLS。</p>
-    </div>
+    <div class="callout callout-info"><strong>基础服务已启动</strong></div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <el-alert
       v-if="job"
@@ -134,7 +128,7 @@ onBeforeUnmount(() => {
         <span class="step-num">1</span>
         <div>
           <h2>域名 HTTPS</h2>
-          <p>域名需指向本服务器，放行 TCP 80/443。使用专用服务器，已有外部 Nginx 不会被接管。</p>
+          <p class="sub">域名指向本机，放行 TCP 80/443</p>
         </div>
         <span v-if="tlsReady" class="badge badge-ok">已启用</span>
       </header>
@@ -164,8 +158,7 @@ onBeforeUnmount(() => {
         <span class="step-num">2</span>
         <div>
           <h2>AnyTLS 客户端订阅</h2>
-          <p v-if="!tlsReady">先完成域名 HTTPS，才能启用 AnyTLS。</p>
-          <p v-else>为 Mihomo 等客户端提供独立端口与订阅链接。</p>
+          <p v-if="!tlsReady" class="sub">需先完成域名 HTTPS</p>
         </div>
       </header>
       <el-button
@@ -181,7 +174,6 @@ onBeforeUnmount(() => {
         <span class="step-num">3</span>
         <div>
           <h2>基础模式</h2>
-          <p>默认直连，代理池可以进入控制台后配置。SOCKS 和 AnyTLS 实际使用的端口需要自行放行。</p>
         </div>
       </header>
       <div class="button-row">
@@ -189,22 +181,6 @@ onBeforeUnmount(() => {
         <el-button type="primary" :disabled="busy" @click="finish">进入控制台</el-button>
       </div>
       <pre v-if="credentials" class="code-block">{{ JSON.stringify(credentials, null, 2) }}</pre>
-    </section>
-    <section class="card">
-      <details class="disclosure">
-        <summary>修改管理员密码</summary>
-        <el-form @submit.prevent="changePassword" label-position="top" class="form-grid">
-          <el-form-item label="当前密码"
-            ><el-input v-model="oldPassword" type="password" autocomplete="current-password"
-          /></el-form-item>
-          <el-form-item label="新密码"
-            ><el-input v-model="password" type="password" autocomplete="new-password"
-          /></el-form-item>
-          <div class="form-actions">
-            <el-button native-type="submit" :disabled="busy">修改并退出所有会话</el-button>
-          </div>
-        </el-form>
-      </details>
     </section>
   </section>
 </template>

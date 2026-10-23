@@ -106,6 +106,19 @@ func (a *Service) clear(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 }
+
+// attemptKey groups IPv6 clients by /64, the smallest prefix normally assigned
+// to one subscriber, so rotating interface IDs does not bypass the limit.
+func attemptKey(s string) string {
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return s
+	}
+	if v := ip.To4(); v != nil {
+		return v.String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
 func (a *Service) allowed(r *http.Request) bool {
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	// The loopback reverse proxy overwrites this header. Never trust it on public listeners.
@@ -114,6 +127,7 @@ func (a *Service) allowed(r *http.Request) bool {
 			ip = p.String()
 		}
 	}
+	ip = attemptKey(ip)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := time.Now()

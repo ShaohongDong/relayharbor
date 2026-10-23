@@ -21,12 +21,12 @@ sudo bash install.sh
 
 1. 直接选择基础模式，查看 SOCKS 连接信息并进入控制台；或配置域名、邮箱、接受 Let's Encrypt 条款，申请免费 HTTPS 证书。
 2. 域名 HTTPS 就绪后，在新地址用密码重新登录。原 IP 管理入口五分钟后关闭；跳过域名配置则继续保留自签名 HTTPS。
-3. 从部署设置初始化 AnyTLS，创建客户端用户并复制订阅；代理池在控制台中管理。
+3. 在部署设置（或完成后的“客户端订阅”页）初始化 AnyTLS，创建客户端用户并复制订阅；代理池在控制台中管理。
 
 需预先放行管理 TCP 18443（或自定义端口）；申请域名证书还需正确 DNS 和 TCP 80/443，代理入口和客户端端口另行放行。工具不修改 DNS、防火墙或云安全组。
 
 ```bash
-# 自动化安装；参数中的 IP 必须是浏览器可访问的地址
+# 自动化安装；参数中的 IP 必须是浏览器可访问的地址，IPv6 可写 2001:db8::10 或 [2001:db8::10]
 sudo bash install.sh --non-interactive --setup-host 203.0.113.10 \
   --setup-port 18443 --release-version 0.1.0
 # 解压发行包后执行同一个脚本，默认使用包内程序
@@ -54,7 +54,7 @@ make release VERSION=0.1.0
 
 这是尚无正式部署的新项目：只接受 `schemaVersion:2` 配置，不导入旧原生 GOST JSON，不迁移 Python 版安装状态。若测试机器残留旧版安装，先使用旧版工具清理，不直接覆盖外部或不支持的资源。
 
-`init` 和 `check` 无需 root；服务管理命令要求 root。默认监听 `0.0.0.0:1080`，强制入口认证，随机密码只保存在权限 `0600` 的配置文件中。客户端可使用 `socks5h://SERVER:1080`，由代理端解析域名。
+`init` 和 `check` 无需 root；服务管理命令要求 root。默认监听 `[::]:1080`（Linux 默认双栈，同时接受 IPv4/IPv6；内核禁用 IPv6 时生成 `0.0.0.0:1080`），已安装配置不受影响，强制入口认证，随机密码只保存在权限 `0600` 的配置文件中。客户端可使用 `socks5h://SERVER:1080`（IPv6 写作 `socks5h://[2001:db8::1]:1080`），由代理端解析域名。
 
 ## 代理池与 profile
 
@@ -86,7 +86,7 @@ make release VERSION=0.1.0
 ```
 
 - `direct` 直接访问客户端指定目标。`pool` 每次连接选择一个上游，健康节点依次轮询，允许混合 HTTP 和 SOCKS5。HTTP 上游使用 CONNECT；到上游本身的连接不启用 TLS。
-- 上游 `auth` 可以省略或设为 `null`；入口认证始终必需。上游允许域名、IPv4、`[IPv6]:port`，端口 1–65535；入口只允许 IP，端口 1024–65535。
+- 上游 `auth` 可以省略或设为 `null`；入口认证始终必需。上游允许域名、IPv4、`[IPv6]:port`，端口 1–65535；入口只允许 IP，端口 1024–65535；`0.0.0.0` 仅 IPv4，`[::]` 双栈，`[::1]`、`[2001:db8::1]` 等可绑定单个 IPv6 地址，不支持带 `%zone` 的链路本地地址。
 - 建连失败立即摘除节点，尝试本次请求尚未尝试的其他健康节点；每节点最多 5 秒，总预算 15 秒。应用数据只在建连成功后转发，不重放已建立连接的数据。
 - 全池故障返回失败，保留当前 profile，不改用直连或其他池。故障节点至少冷却 10 秒，探测成功后恢复。
 - 所有池均定时探测，包括未选中的池。探测通过节点的真实认证和 CONNECT 到显式配置的目标，验证完整路径。TCP 探测成功表示已建立目标连接。
@@ -103,6 +103,15 @@ sudo gostctl profile use direct
 `use` 等待运行时确认后返回。返回后开始转发的新请求使用新 profile，之前已开始建连的请求和已有连接继续使用原路径，入口 PID 不变。允许选择暂不可用的池，状态显示 `available:false`，新请求失败并等待恢复。
 
 只修改 profile、节点或探测配置时，`configure` 也使用热更新。删除或更换节点后，其旧 worker 等待旧连接自然结束再退出。上游本身故障会结束已有连接，自动切换作用于新建连接。
+
+## 多出口
+
+共享入口始终跟随 `activeProfile`；需要不同客户端同时走不同出口时，可使用附加入口或为 AnyTLS 用户固定出口。所有出口共用同一套池、探测和冷却状态，全池故障仍拒绝连接，不回退直连。
+
+- **附加 SOCKS5 入口**：可选 `entries` 字段，每项包含 `name`、`addr`、`udp`、`users` 和 `profile`。每个入口独立运行一个 GOST 进程，使用自己的端口和必需认证，固定走所选 profile，与共享入口同时生效。名称规则同 profile，端口不得与共享入口或其他入口重复；`udp:true` 仅允许直连出口。只改 `profile` 时热切换并保留已有连接；修改地址、用户或 UDP 需要重启。被入口引用的 profile 不能删除。
+- **AnyTLS 用户出口**：`sudo gostctl anytls user route --id phone --profile office` 固定出口，`--profile ""` 恢复跟随当前 profile；新增用户时也可附带 `--profile`。修改后只重写并重启该用户实例，**该用户的已有连接会中断**，其他用户不受影响。被 AnyTLS 用户使用的 profile 不能从配置中删除，需先修改其出口。
+
+内部实现：入口和 sing-box 用同一个内部网关密码，通过网关用户名 `…:entry:NAME` / `…:profile:NAME` 选择路由。网关仅监听回环地址，未知路由会被拒绝。`/status` 的 `entries` 字段返回各附加入口的出口与可用性；控制台的“入口与认证”和“客户端订阅”页可编辑上述设置。
 
 ## 生命周期与部署架构
 
@@ -172,9 +181,9 @@ make integration
 
 ## Vue 单页面控制台
 
-安装结束后通过输出的 HTTPS 地址访问，首次输入初始化码设置密码，此后使用管理员密码登录。控制台保持中文单页面布局，“部署设置”可随时重新打开。
+安装结束后通过输出的 HTTPS 地址访问，首次输入初始化码设置密码，此后使用管理员密码登录。控制台保持中文单页面布局。登录后第一个页面固定为“部署设置”，完成前不能进入其他页面；点击“进入控制台”确认完成后，该页面及其接口（`/setup/complete`、`/setup/credentials`、`/tls/setup` 返回 `409 setup_completed`）永久关闭，之后域名修改使用服务器 CLI。
 
-部署设置支持基础模式、域名 HTTPS、AnyTLS 初始化、首个用户创建、查看 SOCKS 凭据和修改管理员密码。长时间下载和证书申请由 systemd 后台任务执行，页面关闭或刷新不会取消；失败显示原因并允许重试，不重复已完成的初始化。
+部署设置支持基础模式、域名 HTTPS、AnyTLS 初始化、首个用户创建和查看 SOCKS 凭据；管理员密码在“服务运维”中修改。长时间下载和证书申请由 systemd 后台任务执行，页面关闭或刷新不会取消；失败显示原因并允许重试，不重复已完成的初始化。
 
 忘记密码时在服务器执行：
 
@@ -192,9 +201,9 @@ sudo gostctl auth reset
 
 ### Clash/Mihomo 订阅与 AnyTLS
 
-支持向 **支持 AnyTLS 的 Mihomo 客户端**发布订阅。每个用户或设备有独立密码、订阅 token、TCP 端口及 systemd 实例；客户端只看到一个节点，出站跟随服务端当前 `activeProfile`。首版仅 TCP，不导入外部订阅。普通 Clash 内核不作为兼容目标。
+支持向 **支持 AnyTLS 的 Mihomo 客户端**发布订阅。每个用户或设备有独立密码、订阅 token、TCP 端口及 systemd 实例；客户端只看到一个节点，出站默认跟随服务端当前 `activeProfile`，也可按用户固定出口（见[多出口](#多出口)）。首版仅 TCP，不导入外部订阅。普通 Clash 内核不作为兼容目标。
 
-正常部署在“部署设置”完成 HTTPS 后点击“初始化 AnyTLS”。离线及运维场景仍可使用 CLI：
+正常部署在“部署设置”完成 HTTPS 后点击“初始化 AnyTLS”；部署设置完成后仍未初始化的，可在“客户端订阅”页点击“初始化 AnyTLS”。离线及运维场景仍可使用 CLI：
 
 ```bash
 sudo gostctl anytls setup
@@ -205,9 +214,9 @@ sudo gostctl anytls status
 sudo gostctl anytls user credentials --id phone
 ```
 
-管理器下载并校验固定版本 sing-box 1.14.3（Linux amd64/arm64，官方归档 SHA-256 锁定在源码），作为独立进程使用；目标机无需额外语言运行时，ARM64 内核使用受支持 Ubuntu/Debian 自带的 glibc。AnyTLS 入口监听 IPv4，域名需有可达的 A 记录。默认从 8443 起分配未占用端口，分配后持久化；需在防火墙及云安全组放行实际分配的 TCP 端口。支持最多 128 个用户，每个启用用户运行一个进程，部署容量应按实际内存和连接数评估。
+管理器下载并校验固定版本 sing-box 1.14.3（Linux amd64/arm64，官方归档 SHA-256 锁定在源码），作为独立进程使用；目标机无需额外语言运行时，ARM64 内核使用受支持 Ubuntu/Debian 自带的 glibc。AnyTLS 入口在支持 IPv6 的主机上双栈监听 `::`（否则 `0.0.0.0`），域名可配置 A 和/或 AAAA 记录；已部署的实例在执行 `gostctl anytls disable` 再 `enable` 后改为双栈。默认从 8443 起分配未占用端口，分配后持久化；需在防火墙及云安全组（含 IPv6 规则）放行实际分配的 TCP 端口。支持最多 128 个用户，每个启用用户运行一个进程，部署容量应按实际内存和连接数评估。
 
-Vue 单页面的“客户端订阅”标签支持新增、重命名、启停、删除、查看凭据、复制链接及下载配置。首次安装内核从“部署设置”完成，CLI 仍支持离线运维。凭据只在显式查看时显示，不写入浏览器持久化存储；通过 HTTPS 页面下载配置。可将完整配置链接导入客户端，或在现有配置的 `proxy-providers` 中使用节点列表链接：
+Vue 单页面的“客户端订阅”标签支持新增、重命名、启停、删除、查看凭据、复制链接及下载配置。首次安装内核从“部署设置”或本页的初始化按钮完成，CLI 仍支持离线运维。凭据只在显式查看时显示，不写入浏览器持久化存储；通过 HTTPS 页面下载配置。可将完整配置链接导入客户端，或在现有配置的 `proxy-providers` 中使用节点列表链接：
 
 - `https://DOMAIN/sub/TOKEN/clash.yaml`：完整配置，单节点选择组与 `MATCH` 路由，无自动直连兜底。
 - `https://DOMAIN/sub/TOKEN/proxies.yaml`：仅 `proxies` 节点列表，供现有 Mihomo 配置使用。
@@ -231,7 +240,7 @@ AnyTLS 状态位于 `/var/lib/gost-deploy/anytls.json`（0600），使用独立 
 
 证书复用现有 lego 续期流程，验证后更新实例证书副本并探测实际提供的证书；热加载失败恢复旧版本并报告失败，不重启全部用户兜底。AnyTLS 启用期间需先停用它，才能停用 HTTPS 或修改域名。管理 API 停止不影响转发；GOST 停止时新代理请求失败，恢复后可重新连接。卸载先停用全部实例，`--purge` 清理受管用户、凭据和内核。
 
-管理接口为 `GET /api/v1/anytls`，以及 `/api/v1/anytls/enable|disable|users`、`/api/v1/anytls/users/{id}/rename|enable|disable|delete|reset-token|reset-password|credentials` 的 POST 操作。所有操作使用管理员会话与 CSRF；POST 必须携带 **AnyTLS 自身**的 `If-Match`，不使用代理配置 revision。用户列表脱敏，`credentials` 是显式返回秘密的接口。详见 OpenAPI。
+管理接口为 `GET /api/v1/anytls`，以及 `/api/v1/anytls/enable|disable|users`、`/api/v1/anytls/users/{id}/rename|route|enable|disable|delete|reset-token|reset-password|credentials` 的 POST 操作。所有操作使用管理员会话与 CSRF；POST 必须携带 **AnyTLS 自身**的 `If-Match`，不使用代理配置 revision。用户列表脱敏，`credentials` 是显式返回秘密的接口。详见 OpenAPI。
 
 ### Nginx HTTPS 与免费证书
 
@@ -259,7 +268,7 @@ sudo ./install.sh --config gost.json \
 
 `gost-deploy-tls-renew.timer` 每 12 小时检查一次，附加最多一小时随机延迟，并在关机错过检查后补执行。是否续期由 lego 根据证书实际有效期及 CA 的 ARI 建议判断；不会每次检查都重新签发。定时任务独立于页面和管理 API，获取证书后验证域名、有效期与密钥匹配，再通过 `nginx -t` 并平滑重载。失败保留原有效证书，下次自动重试；已经获取但尚未部署的证书优先重试部署。
 
-“服务运维”的 HTTPS 卡片展示证书有效期、timer、最近结果及后台任务，支持检查续期和重载。首次配置和域名修改可在“部署设置”完成；CLI 同样保留：
+“服务运维”的 HTTPS 卡片展示证书有效期、timer、最近结果及后台任务，支持检查续期和重载。首次配置在“部署设置”完成，之后的域名修改使用 CLI：
 
 ```bash
 sudo gostctl tls renew      # 后台检查续期，不强制提前签发
@@ -273,7 +282,7 @@ sudo journalctl -u gost-deploy-tls-renew -u gost-deploy-tls-reload -n 100 --no-p
 
 卸载同步停用 HTTPS，`uninstall --purge` 清理本项目证书、账号及受管资源，保留系统 Nginx 软件包。HTTPS 出现问题时可使用 root CLI 恢复管理；首次 HTTPS 失败不撤销已成功安装的 GOST，并保留自签名管理入口。
 
-新增 `GET /api/v1/tls`、`POST /api/v1/tls/renew` 和 `POST /api/v1/tls/reload`；POST 提交 `{}` 并携带 `If-Match`，立即返回后台任务已排队，随后查询状态。TLS 操作不改变代理配置 revision；并行操作返回 `409 tls_busy`。API 不提供私钥或强制签发操作；`POST /api/v1/tls/setup` 支持管理员配置域名，返回可查询的后台任务。
+新增 `GET /api/v1/tls`、`POST /api/v1/tls/renew` 和 `POST /api/v1/tls/reload`；POST 提交 `{}` 并携带 `If-Match`，立即返回后台任务已排队，随后查询状态。TLS 操作不改变代理配置 revision；并行操作返回 `409 tls_busy`。API 不提供私钥或强制签发操作；`POST /api/v1/tls/setup` 仅在部署设置完成前可用，返回可查询的后台任务。
 
 ### 前端开发与构建
 

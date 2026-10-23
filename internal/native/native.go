@@ -29,6 +29,12 @@ type Options struct {
 func Frontend(c config.Config, o Options) M {
 	return Chain(Service(c.Listener.Addr, c.Listener.Users, c.Listener.UDP), config.Node{Type: "socks5", Addr: o.Gateway, Auth: &o.Auth})
 }
+
+// Entry is an independent frontend whose gateway username selects its bound profile.
+func Entry(e config.Entry, o Options) M {
+	a := config.Auth{Username: config.RouteEntry(o.Auth.Username, e.Name), Password: o.Auth.Password}
+	return Chain(Service(e.Addr, e.Users, e.UDP), config.Node{Type: "socks5", Addr: o.Gateway, Auth: &a})
+}
 func Worker(addr string, a config.Auth, n *config.Node) M {
 	c := Service(addr, []config.Auth{a}, n == nil)
 	if n != nil {

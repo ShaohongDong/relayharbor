@@ -23,9 +23,17 @@ export interface Profile {
   nodes?: Node[]
   probe?: Probe
 }
+export interface Entry {
+  name: string
+  addr: string
+  udp: boolean
+  users: Auth[]
+  profile: string
+}
 export interface Config {
   schemaVersion: 2
   listener: { addr: string; udp: boolean; users: Auth[] }
+  entries?: Entry[]
   activeProfile: string
   profiles: Profile[]
 }
@@ -37,6 +45,12 @@ export interface NodeStatus {
   lastProbe: number | null
   failures: number
 }
+export interface EntryStatus {
+  name: string
+  addr: string
+  profile: string
+  available: boolean
+}
 export interface Status {
   active: boolean
   ready?: boolean
@@ -47,6 +61,7 @@ export interface Status {
   arch: string
   connections?: number
   nodes?: NodeStatus[]
+  entries?: EntryStatus[]
   rollbackAvailable?: boolean
   rollbackTarget?: { version: string; activeProfile: string; active: boolean; enabled: boolean }
 }
@@ -87,6 +102,8 @@ export function payload(c: Config): Config {
     if (!a.password) delete a.password
   }
   out.listener.users.forEach(clean)
+  out.entries?.forEach((e) => e.users.forEach(clean))
+  if (!out.entries?.length) delete out.entries
   out.profiles.forEach((p) => {
     if (p.type === 'direct') {
       delete p.nodes
@@ -110,6 +127,7 @@ export function redacted(c: Config): Config {
     delete a.password
   }
   out.listener.users.forEach(hide)
+  out.entries?.forEach((e) => e.users.forEach(hide))
   out.profiles.forEach((p) =>
     p.nodes?.forEach((n) => {
       if (n.auth) hide(n.auth)
@@ -117,8 +135,13 @@ export function redacted(c: Config): Config {
   )
   return out
 }
+// Entry profile bindings switch in place; listener and entry sockets/users restart.
 export function needsRestart(c: Config, base: Config): boolean {
-  return JSON.stringify(payload(c).listener) !== JSON.stringify(payload(base).listener)
+  const fixed = (v: Config) => {
+    const d = payload(v)
+    return JSON.stringify([d.listener, (d.entries ?? []).map((e) => ({ ...e, profile: '' }))])
+  }
+  return fixed(c) !== fixed(base)
 }
 export function validateDraft(c: Config, base: Config): string | null {
   const ids = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
@@ -138,6 +161,30 @@ export function validateDraft(c: Config, base: Config): string | null {
       )
     )
       return '新增或修改入口身份时必须填写密码'
+  const port = (addr: string) => addr.slice(addr.lastIndexOf(':') + 1)
+  const ports = [port(c.listener.addr)]
+  const entries = c.entries ?? []
+  if (!unique(entries.map((e) => e.name))) return '附加入口名称不能重复'
+  for (const e of entries) {
+    if (!ids.test(e.name) || !e.addr)
+      return '附加入口名称须为 1–64 位字母、数字、下划线或连字符，并填写监听地址'
+    if (ports.includes(port(e.addr))) return `${e.name}：入口端口不能与其他入口重复`
+    ports.push(port(e.addr))
+    if (!e.users.length) return `${e.name}：至少保留一个入口用户`
+    if (!unique(e.users.map((u) => u.username))) return `${e.name}：入口用户名不能重复`
+    const old = base.entries?.find((v) => v.name === e.name)
+    for (const u of e.users)
+      if (
+        authError(
+          u,
+          old?.users.find((v) => v.username === u.username),
+        )
+      )
+        return `${e.name}：新增或改名后的入口身份必须填写密码`
+    const p = c.profiles.find((v) => v.name === e.profile)
+    if (!p) return `${e.name}：请选择有效出口 profile`
+    if (e.udp && p.type !== 'direct') return `${e.name}：UDP 仅支持直连出口`
+  }
   if (!c.profiles.length || !c.profiles.some((p) => p.name === c.activeProfile))
     return '请选择应用后使用的有效代理池或直连 profile'
   if (!unique(c.profiles.map((p) => p.name))) return 'profile 名称不能重复'

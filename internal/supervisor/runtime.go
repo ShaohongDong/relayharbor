@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -145,15 +146,30 @@ type NodeStatus struct {
 	LatencyMS *float64 `json:"latencyMs"`
 	Failures  int      `json:"failures"`
 }
+type EntryStatus struct {
+	Name      string `json:"name"`
+	Addr      string `json:"addr"`
+	Profile   string `json:"profile"`
+	Available bool   `json:"available"`
+	PID       int    `json:"pid"`
+}
 type Status struct {
-	Ready         bool         `json:"ready"`
-	Revision      string       `json:"revision"`
-	ActiveProfile string       `json:"activeProfile"`
-	Available     bool         `json:"available"`
-	HealthyNodes  int          `json:"healthyNodes"`
-	Nodes         []NodeStatus `json:"nodes"`
-	Connections   int64        `json:"connections"`
-	FrontendPID   int          `json:"frontendPid"`
+	Ready         bool          `json:"ready"`
+	Revision      string        `json:"revision"`
+	ActiveProfile string        `json:"activeProfile"`
+	Available     bool          `json:"available"`
+	HealthyNodes  int           `json:"healthyNodes"`
+	Nodes         []NodeStatus  `json:"nodes"`
+	Entries       []EntryStatus `json:"entries"`
+	Connections   int64         `json:"connections"`
+	FrontendPID   int           `json:"frontendPid"`
+}
+
+// frontend is one independent public GOST entry process.
+type frontend struct {
+	name string
+	cmd  *exec.Cmd
+	done chan struct{}
 }
 type Runtime struct {
 	Input             Input
@@ -167,8 +183,9 @@ type Runtime struct {
 	workers           map[string]*Worker
 	generations       []*Generation
 	listeners         []net.Listener
-	front             *exec.Cmd
-	frontDone         chan struct{}
+	fronts            []*frontend
+	frontExit         chan struct{}
+	exitOnce          sync.Once
 	wg                sync.WaitGroup
 	probeLimit        chan struct{}
 	probeWG           sync.WaitGroup
@@ -295,7 +312,7 @@ func (r *Runtime) prepare(c config.Config, revision string) error {
 	return r.probeGeneration(g, "", true)
 }
 func reflectListener(a, b config.Config) bool {
-	return string(config.Bytes(a.Listener)) == string(config.Bytes(b.Listener))
+	return string(config.Bytes(a.Static())) == string(config.Bytes(b.Static()))
 }
 func (r *Runtime) Commit(rev string) (Status, error) {
 	r.mutation.Lock()
@@ -335,25 +352,43 @@ func (r *Runtime) status() Status {
 	s.Ready = true
 	s.Revision = g.revision
 	s.ActiveProfile = g.cfg.ActiveProfile
-	s.Available = g.cfg.Active().Type == "direct"
+	s.Available, s.HealthyNodes = available(g, s.ActiveProfile)
 	for _, p := range g.cfg.Profiles {
 		for _, n := range p.Nodes {
 			h := g.health[key(p.Name, n.ID)]
 			good := h.Healthy
 			s.Nodes = append(s.Nodes, NodeStatus{p.Name, n.ID, n.Type, n.Addr, &good, h.LastProbe, h.LatencyMS, h.Failures})
-			if p.Name == s.ActiveProfile && good {
-				s.HealthyNodes++
-				s.Available = true
-			}
 		}
+	}
+	pids := map[string]int{}
+	for _, f := range r.fronts {
+		pids[f.name] = f.cmd.Process.Pid
+	}
+	s.FrontendPID = pids[""]
+	s.Entries = []EntryStatus{}
+	for _, e := range g.cfg.Entries {
+		good, _ := available(g, e.Profile)
+		s.Entries = append(s.Entries, EntryStatus{e.Name, e.Addr, e.Profile, good, pids[e.Name]})
 	}
 	for _, w := range r.workers {
 		s.Connections += w.refs.Load()
 	}
-	if r.front != nil {
-		s.FrontendPID = r.front.Process.Pid
-	}
 	return s
+}
+
+// available reports whether new connections routed to the profile can succeed.
+func available(g *Generation, name string) (bool, int) {
+	p, ok := g.cfg.Profile(name)
+	if !ok {
+		return false, 0
+	}
+	healthy := 0
+	for _, n := range p.Nodes {
+		if g.health[key(p.Name, n.ID)].Healthy {
+			healthy++
+		}
+	}
+	return p.Type == "direct" || healthy > 0, healthy
 }
 func (r *Runtime) Probe(name string) ([]NodeStatus, error) {
 	r.mutation.Lock()
@@ -434,12 +469,29 @@ func (r *Runtime) probeGeneration(g *Generation, name string, unknown bool) erro
 	}
 	return nil
 }
-func (r *Runtime) establish(ctx context.Context, g *Generation, command byte, addr []byte) (net.Conn, []byte, *Worker, error) {
-	p := g.cfg.Active()
+
+// route resolves a gateway username to its egress profile and UDP permission in g.
+func route(g *Generation, base, user string) (config.Profile, bool, bool) {
+	if user == base {
+		return g.cfg.Active(), g.cfg.Listener.UDP, true
+	}
+	if name, ok := strings.CutPrefix(user, base+":profile:"); ok {
+		p, ok := g.cfg.Profile(name)
+		return p, false, ok
+	}
+	if name, ok := strings.CutPrefix(user, base+":entry:"); ok {
+		if e, ok := g.cfg.Entry(name); ok {
+			p, ok := g.cfg.Profile(e.Profile)
+			return p, e.UDP, ok
+		}
+	}
+	return config.Profile{}, false, false
+}
+func (r *Runtime) establish(ctx context.Context, g *Generation, p config.Profile, udp bool, command byte, addr []byte) (net.Conn, []byte, *Worker, error) {
 	choices := []string{}
 	r.mu.Lock()
 	if command == socks.UDPTunnel {
-		if p.Type == "direct" && g.cfg.Listener.UDP {
+		if p.Type == "direct" && udp {
 			choices = append(choices, key(p.Name, ""))
 		}
 	} else if command == socks.Connect {
@@ -494,7 +546,19 @@ func (r *Runtime) connection(c net.Conn) {
 	stop := context.AfterFunc(r.ctx, func() { c.Close() })
 	defer stop()
 	c.SetDeadline(time.Now().Add(15 * time.Second))
-	if socks.Accept(c, r.Input.Options.Auth) != nil {
+	base := r.Input.Options.Auth.Username
+	user, e := socks.AcceptUser(c, r.Input.Options.Auth.Password, func(u string) bool {
+		if u == base {
+			return true
+		}
+		for _, prefix := range []string{base + ":profile:", base + ":entry:"} {
+			if name, ok := strings.CutPrefix(u, prefix); ok && config.Identifier(name) {
+				return true
+			}
+		}
+		return false
+	})
+	if e != nil {
 		return
 	}
 	h := make([]byte, 3)
@@ -507,16 +571,21 @@ func (r *Runtime) connection(c net.Conn) {
 	}
 	r.mu.Lock()
 	g := r.current
+	var p config.Profile
+	var udp, ok bool
 	if g != nil {
+		p, udp, ok = route(g, base, user)
+	}
+	if ok {
 		g.pending++
 	}
 	r.mu.Unlock()
-	if g == nil {
+	if !ok {
 		c.Write(socks.Failure)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.ctx, 15*time.Second)
-	up, reply, w, e := r.establish(ctx, g, h[1], addr)
+	up, reply, w, e := r.establish(ctx, g, p, udp, h[1], addr)
 	cancel()
 	r.mu.Lock()
 	g.pending--
@@ -586,11 +655,30 @@ func (r *Runtime) Start(ctx context.Context) error {
 	if _, e = r.Commit(r.Input.Revision); e != nil {
 		return e
 	}
-	path := filepath.Join(r.Dir, "frontend.json")
-	if e = Private(path, config.Bytes(native.Frontend(r.Input.Config, r.Input.Options))); e != nil {
+	r.frontExit = make(chan struct{})
+	if e = r.startFrontend("", native.Frontend(r.Input.Config, r.Input.Options), r.Input.Config.Listener.Addr, r.Input.Config.Listener.Users[0]); e != nil {
 		return e
 	}
-	log, e := privateFile(filepath.Join(r.Dir, "frontend.log"))
+	for _, en := range r.Input.Config.Entries {
+		if e = r.startFrontend(en.Name, native.Entry(en, r.Input.Options), en.Addr, en.Users[0]); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// startFrontend launches one public GOST entry and waits until it authenticates.
+// Any frontend exit closes frontExit so systemd restarts the whole group.
+func (r *Runtime) startFrontend(name string, cfg native.M, addr string, a config.Auth) error {
+	file := "frontend"
+	if name != "" {
+		file = "entry-" + name
+	}
+	path := filepath.Join(r.Dir, file+".json")
+	if e := Private(path, config.Bytes(cfg)); e != nil {
+		return e
+	}
+	log, e := privateFile(filepath.Join(r.Dir, file+".log"))
 	if e != nil {
 		return e
 	}
@@ -601,25 +689,30 @@ func (r *Runtime) Start(ctx context.Context) error {
 		log.Close()
 		return e
 	}
+	f := &frontend{name: name, cmd: cmd, done: make(chan struct{})}
 	r.mu.Lock()
-	r.front = cmd
-	r.frontDone = make(chan struct{})
+	r.fronts = append(r.fronts, f)
 	r.mu.Unlock()
-	go func() { _ = cmd.Wait(); log.Close(); close(r.frontDone) }()
+	go func() {
+		_ = cmd.Wait()
+		log.Close()
+		close(f.done)
+		r.exitOnce.Do(func() { close(r.frontExit) })
+	}()
+	host, port, _ := net.SplitHostPort(addr)
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	if host == "::" {
+		host = "::1"
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		host, port, _ := net.SplitHostPort(r.Input.Config.Listener.Addr)
-		if host == "0.0.0.0" {
-			host = "127.0.0.1"
-		}
-		if host == "::" {
-			host = "::1"
-		}
-		if checkAuth(r.ctx, net.JoinHostPort(host, port), r.Input.Config.Listener.Users[0]) == nil {
+		if checkAuth(r.ctx, net.JoinHostPort(host, port), a) == nil {
 			return nil
 		}
 		select {
-		case <-r.frontDone:
+		case <-f.done:
 			return errors.New("入口 GOST 提前退出")
 		case <-r.ctx.Done():
 			return r.ctx.Err()
@@ -639,7 +732,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-r.frontDone:
+		case <-r.frontExit:
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -715,8 +808,11 @@ func (r *Runtime) Stop() {
 	for _, w := range workers {
 		w.stop()
 	}
-	if r.frontDone != nil {
-		<-r.frontDone
+	r.mu.Lock()
+	fronts := r.fronts
+	r.mu.Unlock()
+	for _, f := range fronts {
+		<-f.done
 	}
 	_ = os.Remove(filepath.Join(r.Dir, "control.sock"))
 }

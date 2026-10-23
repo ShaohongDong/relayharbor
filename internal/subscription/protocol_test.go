@@ -71,7 +71,7 @@ func TestAnyTLSProtocol(t *testing.T) {
 	port, _ := strconv.Atoi(p)
 	user := subscription.User{ID: "client", Name: "test: \"设备\"", Port: port, Enabled: true, Password: config.Secret(), Token: config.Secret()}
 	path := filepath.Join(dir, "server.json")
-	os.WriteFile(path, config.Bytes(subscription.Native(user, options.Gateway, options.Auth, certPath, keyPath)), 0600)
+	os.WriteFile(path, config.Bytes(subscription.Native(user, config.Wildcard(), options.Gateway, options.Auth, certPath, keyPath)), 0600)
 	testkit.StartSingBox(t, binary, path, addr)
 	clientArch := "amd64-compatible"
 	if arch == "arm64" {

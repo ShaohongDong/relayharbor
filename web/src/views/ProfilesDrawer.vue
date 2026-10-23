@@ -7,7 +7,6 @@ const { draft, status, dirty, disconnected, profilesOpen, probe, editProfile, re
 
 <template>
   <el-drawer v-model="profilesOpen" title="管理代理池与直连" size="min(560px, 100vw)">
-    <p class="hint">修改保存到页面草稿，关闭抽屉后点击“校验并应用”生效。</p>
     <el-form label-position="top"
       ><el-form-item label="应用后出口"
         ><el-select v-model="draft!.activeProfile" aria-label="应用后出口"
@@ -22,15 +21,12 @@ const { draft, status, dirty, disconnected, profilesOpen, probe, editProfile, re
         <div>
           <div class="pool-name">
             <strong>{{ p.name }}</strong>
-            <span class="badge">{{ p.type === 'direct' ? '直连' : '代理池' }}</span>
-          </div>
-          <p>
-            {{
+            <span class="badge" :class="{ mono: p.type === 'pool' }">{{
               p.type === 'direct'
-                ? '直接连接目标'
-                : `${p.nodes?.length ?? 0} 个节点 · ${p.probe?.type?.toUpperCase() ?? '未设置'} 探测`
-            }}
-          </p>
+                ? '直连'
+                : `${p.nodes?.length ?? 0} · ${p.probe?.type?.toUpperCase() ?? '—'}`
+            }}</span>
+          </div>
         </div>
         <div class="row-actions">
           <el-button

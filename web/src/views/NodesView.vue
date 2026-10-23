@@ -64,12 +64,12 @@ const tone = (health: string) =>
       >
     </div>
     <div class="table-meta">
-      <span>{{ draft!.profiles.length }} 个 profile · {{ rows.length }} 个节点</span>
+      <span class="mono">{{ rows.length }} 节点</span>
       <span
         v-for="p in draft!.profiles.filter((p) => p.type === 'direct')"
         :key="p.name"
         class="badge"
-        >{{ p.name }} · 直连，无上游节点</span
+        >{{ p.name }} · 直连</span
       >
       <el-button
         v-if="filterPool && pools.some((p) => p.name === filterPool)"
@@ -84,7 +84,7 @@ const tone = (health: string) =>
       :data="visibleRows"
       :row-key="rowKey"
       @sort-change="sortChanged"
-      empty-text="没有匹配的节点。可先创建代理池，再添加节点。"
+      empty-text="没有匹配的节点"
       class="node-table"
     >
       <el-table-column prop="profile" label="所属池" min-width="120" sortable="custom" />
@@ -149,7 +149,4 @@ const tone = (health: string) =>
       class="pagination"
     />
   </section>
-  <p class="hint">
-    健康节点按新连接轮询；故障切换限于当前池。已有连接保持原路径，全池不可用时返回失败。
-  </p>
 </template>

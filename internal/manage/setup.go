@@ -15,6 +15,8 @@ import (
 
 var ErrSetupRevision = errors.New("配置已变化，请刷新后重试")
 var ErrSetupBusy = errors.New("部署任务正在进行")
+var ErrSetupCompleted = errors.New("部署设置已完成，请使用服务器 CLI")
+var ErrAnyTLSConfigured = errors.New("AnyTLS 已初始化")
 
 type SetupJob struct {
 	ID          string     `json:"id"`
@@ -83,6 +85,18 @@ func (m *Manager) SetupBusy() error {
 	return nil
 }
 
+// SetupOpen reports ErrSetupCompleted once the browser setup wizard has been finished.
+func (m *Manager) SetupOpen() error {
+	v, e := m.Access()
+	if e != nil {
+		return e
+	}
+	if v.Completed {
+		return ErrSetupCompleted
+	}
+	return nil
+}
+
 // Reconcile is called once on API startup. systemd owns task lifetime across API restarts.
 func (m *Manager) ReconcileSetup(ctx context.Context) error {
 	return m.jobLock(func() error {
@@ -146,6 +160,16 @@ func (m *Manager) StartSetup(ctx context.Context, kind, key, expected string, o 
 			}
 			if s.Revision != expected {
 				return ErrSetupRevision
+			}
+			// The wizard closes once completed; AnyTLS may still be initialized once.
+			if kind == "tls" {
+				if e := m.SetupOpen(); e != nil {
+					return e
+				}
+			} else if a, e := m.loadAnyTLS(); e != nil {
+				return e
+			} else if a != nil {
+				return ErrAnyTLSConfigured
 			}
 			return m.Managed(ctx, s)
 		}); e != nil {

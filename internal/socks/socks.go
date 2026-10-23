@@ -90,13 +90,19 @@ func Authenticate(c net.Conn, a config.Auth) error {
 	return nil
 }
 func Accept(c net.Conn, a config.Auth) error {
+	_, e := AcceptUser(c, a.Password, func(u string) bool { return u == a.Username })
+	return e
+}
+
+// AcceptUser authenticates the shared password and returns the username when allow accepts it.
+func AcceptUser(c net.Conn, password string, allow func(string) bool) (string, error) {
 	b, e := read(c, 2)
 	if e != nil || b[0] != 5 {
-		return ErrProtocol
+		return "", ErrProtocol
 	}
 	methods, e := read(c, int(b[1]))
 	if e != nil {
-		return e
+		return "", e
 	}
 	ok := false
 	for _, m := range methods {
@@ -106,33 +112,33 @@ func Accept(c net.Conn, a config.Auth) error {
 	}
 	if !ok {
 		_, _ = c.Write([]byte{5, 255})
-		return ErrProtocol
+		return "", ErrProtocol
 	}
 	if _, e = c.Write([]byte{5, 2}); e != nil {
-		return e
+		return "", e
 	}
 	b, e = read(c, 2)
 	if e != nil || b[0] != 1 {
-		return ErrProtocol
+		return "", ErrProtocol
 	}
 	u, e := read(c, int(b[1]))
 	if e != nil {
-		return e
+		return "", e
 	}
 	b, e = read(c, 1)
 	if e != nil {
-		return e
+		return "", e
 	}
 	p, e := read(c, int(b[0]))
 	if e != nil {
-		return e
+		return "", e
 	}
-	if subtle.ConstantTimeCompare(u, []byte(a.Username)) != 1 || subtle.ConstantTimeCompare(p, []byte(a.Password)) != 1 {
+	if subtle.ConstantTimeCompare(p, []byte(password)) != 1 || !allow(string(u)) {
 		_, _ = c.Write([]byte{1, 1})
-		return ErrProtocol
+		return "", ErrProtocol
 	}
 	_, e = c.Write([]byte{1, 0})
-	return e
+	return string(u), e
 }
 func Request(c net.Conn, command byte, addr []byte) ([]byte, error) {
 	if _, e := c.Write(append([]byte{5, command, 0}, addr...)); e != nil {

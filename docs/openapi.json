@@ -2102,6 +2102,10 @@
                     "minimum": 0,
                     "maximum": 65535,
                     "description": "0 allocates an unused port from 8443"
+                  },
+                  "profile": {
+                    "type": "string",
+                    "description": "Optional pinned egress profile; empty follows activeProfile"
                   }
                 },
                 "required": [
@@ -2216,6 +2220,114 @@
                 },
                 "required": [
                   "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Quoted independent AnyTLS revision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "revision"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Independent AnyTLS revision; not proxy configuration revision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or operation failed"
+          },
+          "401": {
+            "description": "Missing or expired session"
+          },
+          "404": {
+            "description": "Not found or disabled user"
+          },
+          "409": {
+            "description": "Revision conflict or TLS work in progress"
+          },
+          "428": {
+            "description": "If-Match required"
+          }
+        }
+      }
+    },
+    "/anytls/users/{id}/route": {
+      "post": {
+        "summary": "AnyTLS users/{id}/route",
+        "description": "Pins the user egress to a profile, or follows activeProfile with an empty string. Rewrites and restarts only this user instance, so its existing connections end; other users keep their connections. Profiles pinned by users cannot be removed from the configuration.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quoted AnyTLS revision from GET /anytls"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "profile": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "profile"
                 ]
               }
             }
@@ -3394,7 +3506,7 @@
             "description": "Missing or expired session"
           },
           "409": {
-            "description": "Revision or operation conflict"
+            "description": "Revision conflict, or setup_completed once setup has been completed"
           },
           "429": {
             "description": "Authentication limit"
@@ -3473,7 +3585,7 @@
             "description": "Missing or expired session"
           },
           "409": {
-            "description": "Revision or operation conflict"
+            "description": "Revision conflict, or setup_completed once setup has been completed"
           },
           "429": {
             "description": "Authentication limit"
@@ -3552,7 +3664,7 @@
             "description": "Missing or expired session"
           },
           "409": {
-            "description": "Revision or operation conflict"
+            "description": "Revision or setup conflict, or setup_completed once setup has been completed; change the domain with the server CLI"
           },
           "429": {
             "description": "Authentication limit"
@@ -3655,7 +3767,7 @@
             "description": "Missing or expired session"
           },
           "409": {
-            "description": "Revision or operation conflict"
+            "description": "Revision or setup conflict, or setup_completed when AnyTLS is already initialized"
           },
           "429": {
             "description": "Authentication limit"
@@ -3981,6 +4093,12 @@
             "items": {
               "$ref": "#/components/schemas/Profile"
             }
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            }
           }
         }
       },
@@ -4035,6 +4153,29 @@
               },
               "enabled": {
                 "type": "boolean"
+              }
+            }
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "addr": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "pid": {
+                  "type": "integer"
+                }
               }
             }
           }
@@ -4279,6 +4420,10 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "profile": {
+            "type": "string",
+            "description": "Pinned egress profile; empty follows activeProfile"
           }
         }
       },
@@ -4378,6 +4523,40 @@
           },
           "acceptTos": {
             "type": "boolean"
+          }
+        }
+      },
+      "Entry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "addr",
+          "udp",
+          "users",
+          "profile"
+        ],
+        "description": "Additional SOCKS5 entrypoint with its own port and users, pinned to one profile. Changing profile is hot and preserves connections; changing addr, udp or users restarts forwarding. udp requires a direct profile.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          },
+          "addr": {
+            "type": "string"
+          },
+          "udp": {
+            "type": "boolean"
+          },
+          "users": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Auth"
+            }
+          },
+          "profile": {
+            "type": "string"
           }
         }
       }

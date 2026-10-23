@@ -60,10 +60,7 @@ async function submit() {
     <main class="login-card">
       <header class="login-brand">
         <span class="brand-mark lg">R</span>
-        <div>
-          <h1>RelayHarbor 控制台</h1>
-          <p>{{ initialized ? '使用管理员密码登录' : '首次访问 · 设置管理员密码' }}</p>
-        </div>
+        <h1>RelayHarbor</h1>
       </header>
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
       <el-alert
@@ -75,7 +72,12 @@ async function submit() {
       />
       <el-form v-if="loaded" label-position="top" size="large" @submit.prevent="submit">
         <el-form-item v-if="!initialized" label="一次性初始化码"
-          ><el-input v-model="code" aria-label="一次性初始化码" type="password" autocomplete="off"
+          ><el-input
+            v-model="code"
+            aria-label="一次性初始化码"
+            type="password"
+            autocomplete="off"
+            placeholder="安装结束时显示"
         /></el-form-item>
         <el-form-item label="管理员密码"
           ><el-input
@@ -83,6 +85,7 @@ async function submit() {
             aria-label="管理员密码"
             type="password"
             :autocomplete="initialized ? 'current-password' : 'new-password'"
+            :placeholder="initialized ? '' : '12–128 个字符'"
             show-password
         /></el-form-item>
         <el-form-item v-if="!initialized" label="确认密码"
@@ -92,7 +95,6 @@ async function submit() {
             type="password"
             autocomplete="new-password"
         /></el-form-item>
-        <p v-if="!initialized" class="hint">输入安装结束时显示的初始化码；密码需 12–128 个字符。</p>
         <el-button
           class="full"
           type="primary"
@@ -102,7 +104,7 @@ async function submit() {
           >{{ initialized ? '登录控制台' : '设置密码并继续' }}</el-button
         >
       </el-form>
-      <p class="login-foot">忘记密码时，在服务器执行 <code>gostctl auth reset</code>。</p>
+      <p class="login-foot">忘记密码：<code>gostctl auth reset</code></p>
     </main>
   </div>
 </template>

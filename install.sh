@@ -51,8 +51,11 @@ if [[ ${interactive} == true ]]; then
     fi
     if [[ -z ${setup_host} ]]; then
         read -r -a local_addresses <<< "$(hostname -I)"
-        suggested_host=${local_addresses[0]:-localhost}
-        printf '浏览器访问的 IP/域名（NAT 环境填写公网地址）[%s]：' "${suggested_host}" >&3
+        suggested_host=localhost
+        for address in "${local_addresses[@]}"; do
+            if [[ ${address} != fe80:* ]]; then suggested_host=${address}; break; fi
+        done
+        printf '浏览器访问的 IPv4/IPv6 地址或域名（NAT 环境填写公网地址）[%s]：' "${suggested_host}" >&3
         IFS= read -r setup_host <&3
         setup_host=${setup_host:-${suggested_host}}
     fi
@@ -61,6 +64,7 @@ if [[ ${interactive} == true ]]; then
     setup_port=${port_answer:-${setup_port}}
     exec 3>&-
 fi
+if [[ ${setup_host} == \[*\] ]]; then setup_host=${setup_host:1:-1}; fi
 if [[ -z ${setup_host} || ! ${setup_host} =~ ^[a-zA-Z0-9.:-]+$ ]]; then echo '需要有效的 --setup-host IP或域名' >&2; exit 1; fi
 if [[ ! ${setup_port} =~ ^[0-9]{4,5}$ ]] || ((10#${setup_port} < 1024 || 10#${setup_port} > 65535 || 10#${setup_port} == 18080)); then
     echo '管理端口必须为 1024–65535，不能使用 18080。' >&2; exit 1
@@ -101,5 +105,5 @@ fi
 if [[ ! -x ${repo_dir}/bin/gostctl || ! -f ${repo_dir}/bin/SHA256SUMS ]]; then echo '缺少预编译程序或校验清单' >&2; exit 1; fi
 (cd "${repo_dir}/bin" && sha256sum --check --status SHA256SUMS)
 "${repo_dir}/bin/gostctl" install "${forward[@]}" --setup-host "${setup_host}" --setup-port "${setup_port}"
-echo "浏览器需要接受自签名证书；请核对上方指纹。放行 TCP ${setup_port}；域名证书另需 TCP 80/443。"
+echo "浏览器需要接受自签名证书；请核对上方指纹。放行 TCP ${setup_port}；域名证书另需 TCP 80/443。使用 IPv6 时，ip6tables/nftables 与云安全组的 IPv6 规则需同样放行。"
 echo '后续 HTTPS、AnyTLS 和代理池配置均可在页面完成。脚本不会修改 DNS、防火墙或云安全组。'

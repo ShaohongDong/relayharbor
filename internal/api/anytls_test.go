@@ -48,6 +48,11 @@ func TestAnyTLSAPI(t *testing.T) {
 		{"POST", "/anytls/users", "token", "a1", `null`, 400},
 		{"POST", "/anytls/users", "token", "a1", `{"port":1.5}`, 400},
 		{"POST", "/anytls/users", "token", "a1", `{"id":"a","name":"设备","port":null}`, 400},
+		{"POST", "/anytls/users/a/route", "token", "a1", `{"profile":"office"}`, 200},
+		{"POST", "/anytls/users/a/route", "token", "a1", `{"profile":""}`, 200},
+		{"POST", "/anytls/users/a/route", "token", "a1", `{}`, 400},
+		{"POST", "/anytls/users/a/route", "token", "a1", `{"profile":"office","name":"x"}`, 400},
+		{"POST", "/anytls/users/a/rename", "token", "a1", `{"profile":"office"}`, 400},
 	} {
 		code, _, _ := request(t, server.URL, tc.method, tc.path, tc.token, tc.rev, []byte(tc.body))
 		if code != tc.status {

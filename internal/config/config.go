@@ -47,9 +47,19 @@ type Profile struct {
 	Nodes []Node `json:"nodes,omitempty"`
 	Probe *Probe `json:"probe,omitempty"`
 }
+
+// Entry is an additional SOCKS entrypoint pinned to one profile.
+type Entry struct {
+	Name    string `json:"name"`
+	Addr    string `json:"addr"`
+	UDP     bool   `json:"udp"`
+	Users   []Auth `json:"users"`
+	Profile string `json:"profile"`
+}
 type Config struct {
 	SchemaVersion int       `json:"schemaVersion"`
 	Listener      Listener  `json:"listener"`
+	Entries       []Entry   `json:"entries,omitempty"`
 	ActiveProfile string    `json:"activeProfile"`
 	Profiles      []Profile `json:"profiles"`
 }
@@ -68,7 +78,7 @@ func Secret() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 func Initial(addr string, udp bool) Config {
-	return Config{2, Listener{addr, udp, []Auth{{"proxy", Secret()}}}, "direct", []Profile{{Name: "direct", Type: "direct"}}}
+	return Config{SchemaVersion: 2, Listener: Listener{addr, udp, []Auth{{"proxy", Secret()}}}, ActiveProfile: "direct", Profiles: []Profile{{Name: "direct", Type: "direct"}}}
 }
 func Text(s string, limit int) bool {
 	if !utf8.ValidString(s) || len(s) < 1 || len(s) > limit {
@@ -110,6 +120,41 @@ func (c Config) Active() Profile {
 	}
 	return Profile{}
 }
+func (c Config) Profile(name string) (Profile, bool) {
+	for _, p := range c.Profiles {
+		if p.Name == name {
+			return p, true
+		}
+	}
+	return Profile{}, false
+}
+func (c Config) Entry(name string) (Entry, bool) {
+	for _, e := range c.Entries {
+		if e.Name == name {
+			return e, true
+		}
+	}
+	return Entry{}, false
+}
+
+// Static is the part of the configuration that requires restarting entry
+// processes; entry profile bindings are excluded because they switch in place.
+func (c Config) Static() any {
+	entries := []Entry{}
+	for _, e := range c.Entries {
+		e.Profile = ""
+		entries = append(entries, e)
+	}
+	return struct {
+		Listener Listener
+		Entries  []Entry
+	}{c.Listener, entries}
+}
+
+// Route usernames tell the internal gateway which egress a trusted local
+// frontend wants. The colon never appears in identifiers, so routes are unambiguous.
+func RouteProfile(base, profile string) string { return base + ":profile:" + profile }
+func RouteEntry(base, entry string) string     { return base + ":entry:" + entry }
 func (c Config) Clone() Config {
 	b, _ := json.Marshal(c)
 	var d Config
@@ -127,14 +172,10 @@ func (c Config) Validate(placeholders bool) error {
 	if c.SchemaVersion != 2 || Endpoint(c.Listener.Addr, true) != nil || len(c.Listener.Users) == 0 || len(c.Profiles) == 0 {
 		return ErrInvalid
 	}
-	names := map[string]bool{}
-	for _, u := range c.Listener.Users {
-		if validateAuth(u, placeholders) != nil || names[u.Username] {
-			return ErrInvalid
-		}
-		names[u.Username] = true
+	if validateUsers(c.Listener.Users, placeholders) != nil {
+		return ErrInvalid
 	}
-	names = map[string]bool{}
+	names := map[string]bool{}
 	for _, p := range c.Profiles {
 		if !Identifier(p.Name) || names[p.Name] {
 			return ErrInvalid
@@ -193,6 +234,34 @@ func (c Config) Validate(placeholders bool) error {
 		}
 	}
 	if !names[c.ActiveProfile] {
+		return ErrInvalid
+	}
+	_, port, _ := net.SplitHostPort(c.Listener.Addr)
+	ports := map[string]bool{port: true}
+	entries := map[string]bool{}
+	for _, e := range c.Entries {
+		p, ok := c.Profile(e.Profile)
+		if !Identifier(e.Name) || entries[e.Name] || Endpoint(e.Addr, true) != nil || validateUsers(e.Users, placeholders) != nil || !ok || (e.UDP && p.Type != "direct") {
+			return ErrInvalid
+		}
+		_, port, _ := net.SplitHostPort(e.Addr)
+		if ports[port] {
+			return ErrInvalid
+		}
+		ports[port] = true
+		entries[e.Name] = true
+	}
+	return nil
+}
+func validateUsers(users []Auth, placeholders bool) error {
+	names := map[string]bool{}
+	for _, u := range users {
+		if validateAuth(u, placeholders) != nil || names[u.Username] {
+			return ErrInvalid
+		}
+		names[u.Username] = true
+	}
+	if len(users) == 0 {
 		return ErrInvalid
 	}
 	return nil
@@ -343,13 +412,40 @@ func authObject(v any, old *Auth, merge bool) (map[string]any, error) {
 	}
 	return m, nil
 }
+
+// parseUsers checks an object's udp flag and merges retained user passwords.
+func parseUsers(l map[string]any, old []Auth, merge bool) error {
+	if _, ok := l["udp"].(bool); !ok {
+		return ErrInvalid
+	}
+	users, ok := l["users"].([]any)
+	if !ok {
+		return ErrInvalid
+	}
+	for i, u := range users {
+		var prior *Auth
+		if um, ok := u.(map[string]any); ok {
+			for _, a := range old {
+				if a.Username == um["username"] {
+					x := a
+					prior = &x
+				}
+			}
+		}
+		var e error
+		if users[i], e = authObject(u, prior, merge); e != nil {
+			return e
+		}
+	}
+	return nil
+}
 func Parse(data []byte, current *Config, placeholders bool) (Config, error) {
 	bad := Config{}
 	v, e := DecodeJSON(data)
 	if e != nil {
 		return bad, e
 	}
-	m, e := object(v, "schemaVersion listener activeProfile profiles", "schemaVersion listener activeProfile profiles")
+	m, e := object(v, "schemaVersion listener entries activeProfile profiles", "schemaVersion listener activeProfile profiles")
 	if e != nil {
 		return bad, e
 	}
@@ -357,26 +453,33 @@ func Parse(data []byte, current *Config, placeholders bool) (Config, error) {
 	if e != nil {
 		return bad, e
 	}
-	if _, ok := l["udp"].(bool); !ok {
-		return bad, ErrInvalid
+	var oldUsers []Auth
+	if current != nil {
+		oldUsers = current.Listener.Users
 	}
-	users, ok := l["users"].([]any)
-	if !ok {
-		return bad, ErrInvalid
+	if e = parseUsers(l, oldUsers, current != nil); e != nil {
+		return bad, e
 	}
-	for i, u := range users {
-		var old *Auth
-		if um, ok := u.(map[string]any); ok && current != nil {
-			for _, a := range current.Listener.Users {
-				if a.Username == um["username"] {
-					x := a
-					old = &x
+	if ev, ok := m["entries"]; ok {
+		entries, ok := ev.([]any)
+		if !ok {
+			return bad, ErrInvalid
+		}
+		for _, x := range entries {
+			en, e := object(x, "name addr udp users profile", "name addr udp users profile")
+			if e != nil {
+				return bad, e
+			}
+			var oldUsers []Auth
+			if current != nil {
+				if name, ok := en["name"].(string); ok {
+					old, _ := current.Entry(name)
+					oldUsers = old.Users
 				}
 			}
-		}
-		users[i], e = authObject(u, old, current != nil)
-		if e != nil {
-			return bad, e
+			if e = parseUsers(en, oldUsers, current != nil); e != nil {
+				return bad, e
+			}
 		}
 	}
 	profiles, ok := m["profiles"].([]any)
@@ -459,6 +562,9 @@ func Parse(data []byte, current *Config, placeholders bool) (Config, error) {
 	if e = d.Decode(&c); e != nil {
 		return bad, ErrInvalid
 	}
+	if len(c.Entries) == 0 {
+		c.Entries = nil
+	}
 	if e = c.Validate(placeholders); e != nil {
 		return bad, e
 	}
@@ -468,10 +574,18 @@ func (c Config) Redacted() any {
 	b, _ := json.Marshal(c)
 	v, _ := DecodeJSON(b)
 	m := v.(map[string]any)
-	for _, u := range m["listener"].(map[string]any)["users"].([]any) {
-		a := u.(map[string]any)
-		delete(a, "password")
-		a["passwordSet"] = true
+	redact := func(users any) {
+		for _, u := range users.([]any) {
+			a := u.(map[string]any)
+			delete(a, "password")
+			a["passwordSet"] = true
+		}
+	}
+	redact(m["listener"].(map[string]any)["users"])
+	if entries, ok := m["entries"].([]any); ok {
+		for _, e := range entries {
+			redact(e.(map[string]any)["users"])
+		}
 	}
 	for _, pv := range m["profiles"].([]any) {
 		p := pv.(map[string]any)

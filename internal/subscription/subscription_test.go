@@ -25,9 +25,12 @@ func TestExportIsolation(t *testing.T) {
 	if !strings.Contains(full, "MATCH,GOST-出口") || strings.Contains(provider, "rules:") {
 		t.Fatal("provider/full formats")
 	}
-	native, _ := json.Marshal(Native(u, "127.0.0.1:12345", config.Auth{Username: "internal", Password: "upstream-secret"}, "/private/cert", "/private/key"))
+	native, _ := json.Marshal(Native(u, "::", "127.0.0.1:12345", config.Auth{Username: "internal", Password: "upstream-secret"}, "/private/cert", "/private/key"))
 	if strings.Contains(string(native), `"type":"direct"`) || !strings.Contains(string(native), `"action":"reject","network":"udp"`) {
 		t.Fatal("worker must fail closed and reject UDP", string(native))
+	}
+	if !strings.Contains(string(native), `"listen":"::"`) || !strings.Contains(string(native), `"server":"127.0.0.1"`) {
+		t.Fatal("worker must listen dual-stack and dial the gateway host", string(native))
 	}
 	for _, port := range []int{0, 443, 65536} {
 		u.Port = port

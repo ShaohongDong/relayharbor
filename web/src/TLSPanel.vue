@@ -87,11 +87,8 @@ onBeforeUnmount(() => {
     <section class="card">
       <header class="card-header">
         <div>
-          <h2>HTTPS 与证书</h2>
-          <p v-if="status?.configured">
-            <strong>{{ status.domain }}</strong>
-          </p>
-          <p v-else>为控制台与订阅提供受信任的 HTTPS 访问</p>
+          <h2>证书</h2>
+          <p v-if="status?.configured" class="sub mono">{{ status.domain }}</p>
         </div>
         <el-button :loading="loading" @click="refresh">刷新 HTTPS 状态</el-button>
       </header>
@@ -142,21 +139,11 @@ onBeforeUnmount(() => {
             >重载 Nginx</el-button
           >
         </div>
-        <p class="hint">
-          每 12 小时自动检查续期；未到续期时间不会重复签发。域名修改可在部署设置完成，停用通过服务器
-          CLI 完成。
-        </p>
       </template>
       <template v-else-if="status">
-        <p class="muted">
-          尚未配置 HTTPS。将域名指向服务器，放行公网 80/443 端口后，在专用服务器执行：
-        </p>
+        <p class="muted">尚未配置 HTTPS。域名指向本机并放行 80/443 后执行：</p>
         <pre class="code-block">
 sudo gostctl tls setup --domain panel.example.com --email admin@example.com --accept-tos</pre>
-        <p class="hint">
-          首次部署及域名修改请打开<a href="#/setup">“部署设置”</a>；也可使用上方
-          CLI。自动续期无需保持页面打开。
-        </p>
       </template>
       <p v-else-if="loading" class="muted">正在读取 HTTPS 状态…</p>
     </section>

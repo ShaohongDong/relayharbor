@@ -481,3 +481,22 @@ func tlsTestSystem(m *Manager, name string, args ...string) ([]byte, error) {
 	}
 	return nil, nil
 }
+
+func TestTLSSiteIPv6Listeners(t *testing.T) {
+	m, c := tlsFixture(t)
+	dual, v4 := m.tlsSiteFor(c, true, "", true), m.tlsSiteFor(c, true, "", false)
+	if !strings.Contains(dual, "listen [::]:80 default_server;") || !strings.Contains(dual, "listen [::]:443 ssl default_server;") {
+		t.Fatal("dual-stack site must listen on IPv6", dual)
+	}
+	if strings.Contains(v4, "[::]") || !strings.Contains(v4, "listen 80 default_server;") || !strings.Contains(v4, "listen 443 ssl default_server;") {
+		t.Fatal("IPv4-only site must omit IPv6 listeners", v4)
+	}
+	for _, ipv6 := range []bool{true, false} {
+		if !m.ownedTLSSite([]byte(m.tlsSiteFor(c, false, "", ipv6)), c) {
+			t.Fatal("generated site not recognized after IPv6 toggle", ipv6)
+		}
+	}
+	if m.ownedTLSSite([]byte(dual), c) {
+		t.Fatal("HTTPS site accepted as provisioning site")
+	}
+}

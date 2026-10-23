@@ -78,3 +78,49 @@ describe('configuration drafts', () => {
     expect(payload(c).profiles[1]).toEqual({ name: 'office', type: 'direct' })
   })
 })
+describe('additional entries', () => {
+  const withEntry = (): Config => {
+    const c = fixture()
+    c.entries = [
+      {
+        name: 'branch',
+        addr: '127.0.0.1:1082',
+        udp: false,
+        users: [{ username: 'b', passwordSet: true }],
+        profile: 'office',
+      },
+    ]
+    return c
+  }
+  it('hides entry secrets and hot-switches profile bindings', () => {
+    const base = withEntry(),
+      c = clone(base)
+    c.entries![0]!.users[0]!.password = 'secret'
+    expect(JSON.stringify(redacted(c))).not.toContain('secret')
+    expect(payload(base).entries![0]!.users[0]).toEqual({ username: 'b' })
+    expect(payload(fixture())).not.toHaveProperty('entries')
+    const rebound = clone(base)
+    rebound.entries![0]!.profile = 'direct'
+    expect(needsRestart(rebound, base)).toBe(false)
+    expect(validateDraft(rebound, base)).toBeNull()
+    const moved = clone(base)
+    moved.entries![0]!.addr = '127.0.0.1:1083'
+    expect(needsRestart(moved, base)).toBe(true)
+  })
+  it('rejects unsafe entries', () => {
+    const base = withEntry()
+    const cases: ((c: Config) => void)[] = [
+      (c) => (c.entries![0]!.addr = '0.0.0.0:1080'),
+      (c) => (c.entries![0]!.profile = 'missing'),
+      (c) => (c.entries![0]!.udp = true),
+      (c) => (c.entries![0]!.users = []),
+      (c) => (c.entries![0]!.name = 'a b'),
+      (c) => (c.entries![0]!.users[0]!.username = 'renamed'),
+    ]
+    for (const change of cases) {
+      const c = clone(base)
+      change(c)
+      expect(validateDraft(c, base)).not.toBeNull()
+    }
+  })
+})

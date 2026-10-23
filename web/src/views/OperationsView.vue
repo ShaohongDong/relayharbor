@@ -1,8 +1,30 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { request } from '../api'
 import { useConsole } from '../console'
 
-const { status, conflict, disconnected, logs, logLimit, serviceLabel, service, readLogs } =
+const { token, status, conflict, disconnected, logs, logLimit, service, readLogs, showError } =
   useConsole()
+const password = ref(''),
+  oldPassword = ref(''),
+  changing = ref(false)
+async function changePassword() {
+  if (changing.value) return
+  changing.value = true
+  try {
+    await request(token.value, '/auth/password', 'POST', {
+      oldPassword: oldPassword.value,
+      password: password.value,
+    })
+    oldPassword.value = ''
+    password.value = ''
+    location.reload()
+  } catch (e) {
+    showError(e)
+  } finally {
+    changing.value = false
+  }
+}
 </script>
 
 <template>
@@ -10,13 +32,8 @@ const { status, conflict, disconnected, logs, logLimit, serviceLabel, service, r
     <div class="ops-grid">
       <section class="card">
         <header class="card-header">
-          <div>
-            <h2>转发服务</h2>
-            <p>
-              {{ serviceLabel }} · {{ status?.enabled ? '已开启开机启动' : '未开启开机启动' }} ·
-              {{ status?.arch }}
-            </p>
-          </div>
+          <h2>转发服务</h2>
+          <span v-if="status?.enabled" class="badge">开机启动</span>
         </header>
         <div class="button-row">
           <el-button
@@ -32,19 +49,16 @@ const { status, conflict, disconnected, logs, logLimit, serviceLabel, service, r
             >重启服务</el-button
           >
         </div>
-        <p class="hint">停止或重启会中断已有连接；管理页面仍可继续使用。</p>
       </section>
       <section class="card">
         <header class="card-header">
           <div>
             <h2>回滚</h2>
-            <p v-if="status?.rollbackAvailable">
-              目标 GOST {{ status.rollbackTarget?.version }} · 出口
+            <p v-if="status?.rollbackAvailable" class="sub mono">
+              GOST {{ status.rollbackTarget?.version }} ·
               {{ status.rollbackTarget?.activeProfile }} ·
-              {{ status.rollbackTarget?.active ? '运行' : '停止' }} /
-              {{ status.rollbackTarget?.enabled ? '开机启动' : '不开机启动' }}
+              {{ status.rollbackTarget?.active ? '运行' : '停止' }}
             </p>
-            <p v-else>暂无可恢复的上一份配置。</p>
           </div>
         </header>
         <el-button
@@ -58,10 +72,7 @@ const { status, conflict, disconnected, logs, logLimit, serviceLabel, service, r
     </div>
     <section class="card">
       <header class="card-header">
-        <div>
-          <h2>近期管理日志</h2>
-          <p>管理服务 journal，不含 worker 原始日志；手动刷新。</p>
-        </div>
+        <h2>管理日志</h2>
         <div class="button-row">
           <el-input-number
             v-model="logLimit"
@@ -78,13 +89,27 @@ const { status, conflict, disconnected, logs, logLimit, serviceLabel, service, r
         type="info"
         :closable="false"
       />
-      <pre class="code-block log-view" data-testid="logs">{{
-        logs
-          ? logs.entries.length
-            ? logs.entries.map((l) => `${l.time} [${l.unit}] ${l.message}`).join('\n')
-            : '暂无管理日志'
-          : '点击“读取日志”查看近期记录。'
+      <pre v-if="logs" class="code-block log-view" data-testid="logs">{{
+        logs.entries.length
+          ? logs.entries.map((l) => `${l.time} [${l.unit}] ${l.message}`).join('\n')
+          : '暂无管理日志'
       }}</pre>
+    </section>
+    <section class="card">
+      <details class="disclosure">
+        <summary>修改管理员密码</summary>
+        <el-form @submit.prevent="changePassword" label-position="top" class="form-grid">
+          <el-form-item label="当前密码"
+            ><el-input v-model="oldPassword" type="password" autocomplete="current-password"
+          /></el-form-item>
+          <el-form-item label="新密码"
+            ><el-input v-model="password" type="password" autocomplete="new-password"
+          /></el-form-item>
+          <div class="form-actions">
+            <el-button native-type="submit" :disabled="changing">修改并退出所有会话</el-button>
+          </div>
+        </el-form>
+      </details>
     </section>
   </div>
 </template>

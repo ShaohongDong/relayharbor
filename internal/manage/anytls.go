@@ -37,6 +37,7 @@ type AnyTLSUserStatus struct {
 	Port    int    `json:"port"`
 	Enabled bool   `json:"enabled"`
 	Active  bool   `json:"active"`
+	Profile string `json:"profile"`
 }
 type AnyTLSStatus struct {
 	Configured bool               `json:"configured"`
@@ -49,6 +50,8 @@ type AnyTLSRequest struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 	Port int    `json:"port,omitempty"`
+	// Profile is the egress for add and route; empty follows activeProfile.
+	Profile string `json:"profile,omitempty"`
 }
 type AnyTLSCredentials struct {
 	Password string `json:"password"`
@@ -178,7 +181,7 @@ func (m *Manager) AnyTLS(ctx context.Context, op string, req AnyTLSRequest, expe
 					status.Configured, status.Enabled, status.Domain, status.Version = true, s.Enabled, s.Domain, s.Release.Version
 					for _, u := range s.Users {
 						_, ae := m.sys(ctx, "is-active", "--quiet", anyTLSUnit(u.ID))
-						status.Users = append(status.Users, AnyTLSUserStatus{u.ID, u.Name, u.Port, u.Enabled, ae == nil})
+						status.Users = append(status.Users, AnyTLSUserStatus{u.ID, u.Name, u.Port, u.Enabled, ae == nil, u.Profile})
 					}
 				}
 				data = status
@@ -188,7 +191,7 @@ func (m *Manager) AnyTLS(ctx context.Context, op string, req AnyTLSRequest, expe
 				return ErrAnyTLSRevision
 			}
 			if s == nil {
-				return errors.New("请先从部署设置初始化 AnyTLS")
+				return errors.New("请先在“客户端订阅”页初始化 AnyTLS")
 			}
 			if e = m.verifyAnyTLS(ctx, s); e != nil {
 				return e
@@ -338,6 +341,31 @@ func (m *Manager) anyTLSPrivateDir(path string) error {
 	}
 	return os.Chown(path, os.Geteuid(), gid)
 }
+
+// anyTLSProfile accepts an empty profile (follow activeProfile) or one that exists.
+func anyTLSProfile(c config.Config, name string) error {
+	if name == "" {
+		return nil
+	}
+	if _, ok := c.Profile(name); !ok {
+		return errors.New("出口 profile 不存在")
+	}
+	return nil
+}
+
+// anyTLSBindings rejects configurations that remove a profile pinned by an AnyTLS user.
+func (m *Manager) anyTLSBindings(c config.Config) error {
+	s, e := m.loadAnyTLS()
+	if e != nil || s == nil {
+		return e
+	}
+	for _, u := range s.Users {
+		if anyTLSProfile(c, u.Profile) != nil {
+			return fmt.Errorf("profile %s 正被 AnyTLS 用户 %s 使用，请先修改其出口", u.Profile, u.ID)
+		}
+	}
+	return nil
+}
 func (m *Manager) writeAnyTLSUser(core *State, s *AnyTLSState, u subscription.User) error {
 	gid, e := m.Group()
 	if e != nil {
@@ -349,7 +377,11 @@ func (m *Manager) writeAnyTLSUser(core *State, s *AnyTLSState, u subscription.Us
 		}
 	}
 	d := m.anyTLSDir(u.ID)
-	b := config.Bytes(subscription.Native(u, core.Runtime.Gateway, core.Runtime.Auth, filepath.Join(d, "cert.pem"), filepath.Join(d, "key.pem")))
+	auth := core.Runtime.Auth
+	if u.Profile != "" {
+		auth.Username = config.RouteProfile(auth.Username, u.Profile)
+	}
+	b := config.Bytes(subscription.Native(u, config.Wildcard(), core.Runtime.Gateway, auth, filepath.Join(d, "cert.pem"), filepath.Join(d, "key.pem")))
 	if e = Atomic(filepath.Join(d, "config.json"), b, 0640, gid); e != nil {
 		return e
 	}
@@ -482,7 +514,7 @@ func (m *Manager) anyTLSReady(ctx context.Context, domain string, u subscription
 }
 
 func availableAnyTLSPort(port int) bool {
-	l, e := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
+	l, e := net.Listen("tcp", net.JoinHostPort(config.Wildcard(), strconv.Itoa(port)))
 	if e != nil {
 		return false
 	}
@@ -541,7 +573,14 @@ func (m *Manager) changeAnyTLS(ctx context.Context, core *State, s *AnyTLSState,
 		if e != nil {
 			return e
 		}
-		for _, addr := range []string{managed.Listener.Addr, core.Runtime.Gateway, "127.0.0.1:18080", m.reservedAccessAddress()} {
+		if e = anyTLSProfile(managed, req.Profile); e != nil {
+			return e
+		}
+		reserved := []string{managed.Listener.Addr, core.Runtime.Gateway, "127.0.0.1:18080", m.reservedAccessAddress()}
+		for _, en := range managed.Entries {
+			reserved = append(reserved, en.Addr)
+		}
+		for _, addr := range reserved {
 			if addr == "" {
 				continue
 			}
@@ -570,7 +609,7 @@ func (m *Manager) changeAnyTLS(ctx context.Context, core *State, s *AnyTLSState,
 		if e != nil || strings.TrimSpace(string(load)) != "not-found" {
 			return errors.New("发现同名 AnyTLS 服务")
 		}
-		s.Users = append(s.Users, subscription.User{ID: req.ID, Name: req.Name, Port: port, Enabled: true, Password: config.Secret(), Token: config.Secret()})
+		s.Users = append(s.Users, subscription.User{ID: req.ID, Name: req.Name, Port: port, Enabled: true, Password: config.Secret(), Token: config.Secret(), Profile: req.Profile})
 		affected = append(affected, req.ID)
 	default:
 		if index < 0 {
@@ -599,6 +638,21 @@ func (m *Manager) changeAnyTLS(ctx context.Context, core *State, s *AnyTLSState,
 			u.Token = config.Secret()
 		case "reset-password":
 			u.Password = config.Secret()
+			affected = append(affected, u.ID)
+			restart = true
+		case "route":
+			managed, e := m.ReadConfig()
+			if e != nil {
+				return e
+			}
+			if e = anyTLSProfile(managed, req.Profile); e != nil {
+				return e
+			}
+			if u.Profile == req.Profile {
+				return nil
+			}
+			// sing-box carries the route in its gateway username, so only this instance restarts.
+			u.Profile = req.Profile
 			affected = append(affected, u.ID)
 			restart = true
 		default:

@@ -18,11 +18,13 @@ type User struct {
 	Enabled  bool   `json:"enabled"`
 	Password string `json:"password"`
 	Token    string `json:"token"`
+	// Profile pins the user's egress; empty follows the global activeProfile.
+	Profile string `json:"profile,omitempty"`
 }
 
 func (u User) Validate() error {
 	if !config.Identifier(u.ID) || !config.Text(u.Name, 128) || u.Port < 1024 || u.Port > 65535 ||
-		!config.Text(u.Password, 255) || len(u.Token) != 43 {
+		!config.Text(u.Password, 255) || len(u.Token) != 43 || (u.Profile != "" && !config.Identifier(u.Profile)) {
 		return config.ErrInvalid
 	}
 	for _, c := range u.Token {
@@ -49,13 +51,14 @@ func YAML(domain string, u User, provider bool) []byte {
 		"\nrules:\n  - MATCH,GOST-出口\n")
 }
 
-func Native(u User, gateway string, auth config.Auth, cert, key string) map[string]any {
+// Native listens on listen, normally config.Wildcard(), so AAAA clients are served.
+func Native(u User, listen, gateway string, auth config.Auth, cert, key string) map[string]any {
 	host, port, _ := net.SplitHostPort(gateway)
 	p, _ := strconv.Atoi(port)
 	return map[string]any{
 		"log": map[string]any{"disabled": true},
 		"inbounds": []any{map[string]any{
-			"type": "anytls", "tag": "client", "listen": "0.0.0.0", "listen_port": u.Port,
+			"type": "anytls", "tag": "client", "listen": listen, "listen_port": u.Port,
 			"users": []any{map[string]any{"name": u.ID, "password": u.Password}},
 			"tls": map[string]any{"enabled": true, "min_version": "1.2",
 				"certificate_path": cert, "key_path": key},

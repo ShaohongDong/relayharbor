@@ -67,9 +67,7 @@ const { profileOpen, profileOrigin, profileEditor, profileTypeChanged, saveProfi
               controls-position="right"
           /></el-form-item>
         </div>
-        <p class="hint">
-          新建代理池后，请添加至少一个节点再应用。修改 profile 名称后，上游认证密码需重新填写。
-        </p></template
+        <p v-if="profileOrigin" class="hint">改名后需重新填写上游密码</p></template
       ></el-form
     ><template #footer
       ><el-button @click="profileOpen = false">取消</el-button

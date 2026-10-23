@@ -9,6 +9,7 @@ interface User {
   port: number
   enabled: boolean
   active: boolean
+  profile: string
 }
 interface Status {
   configured: boolean
@@ -16,6 +17,13 @@ interface Status {
   domain?: string
   version?: string
   users: User[]
+}
+interface Job {
+  id: string
+  kind?: string
+  status: string
+  step: string
+  error?: string
 }
 interface Credentials {
   password: string
@@ -35,6 +43,10 @@ const draft = ref({ id: '', name: '', port: 0 })
 const credentials = ref<Credentials>()
 const secretUser = ref('')
 const conflict = ref(false)
+const job = ref<Job>()
+const tlsEnabled = ref(false)
+const profiles = ref<string[]>([])
+const running = () => ['queued', 'running'].includes(job.value?.status ?? '')
 let alive = true
 let timer: ReturnType<typeof setInterval> | undefined
 
@@ -47,9 +59,21 @@ async function refresh() {
   if (loading.value || busy.value || editor.value || !alive) return
   loading.value = true
   try {
+    if (running())
+      job.value = (await request<Job>(props.token, `/setup/jobs/${job.value!.id}`)).data
     const result = await request<Status>(props.token, '/anytls')
+    const names = (await request<{ name: string }[]>(props.token, '/profiles')).data
+    if (!result.data.configured && !props.embedded) {
+      tlsEnabled.value = (await request<{ enabled: boolean }>(props.token, '/tls')).data.enabled
+      // Resume an initialization started earlier, e.g. before a page reload.
+      if (!job.value) {
+        const latest = (await request<{ job?: Job }>(props.token, '/setup')).data.job
+        if (latest?.kind === 'anytls') job.value = latest
+      }
+    }
     if (alive && !editor.value && !busy.value) {
       status.value = result.data
+      profiles.value = names.map((p) => p.name)
       revision.value = result.revision
       conflict.value = false
       error.value = ''
@@ -79,6 +103,29 @@ async function mutate(path: string, body: unknown = {}) {
   } catch (e) {
     failure(e)
     return false
+  } finally {
+    busy.value = false
+  }
+}
+// Initialization reuses the background setup job, which needs the core config revision.
+async function initialize() {
+  if (busy.value || running()) return
+  busy.value = true
+  error.value = ''
+  try {
+    const setup = await request(props.token, '/setup')
+    job.value = (
+      await request<Job>(
+        props.token,
+        '/anytls/setup',
+        'POST',
+        {},
+        setup.revision,
+        crypto.randomUUID(),
+      )
+    ).data
+  } catch (e) {
+    failure(e)
   } finally {
     busy.value = false
   }
@@ -117,6 +164,20 @@ async function operate(op: string, user?: User) {
     }
   }
   if (await mutate(user ? `users/${user.id}/${op}` : op)) await refresh()
+}
+// The egress travels in the instance's gateway credential, so changing it restarts only this user.
+async function route(user: User, profile: string) {
+  if (profile === user.profile) return
+  try {
+    await ElMessageBox.confirm(
+      `将 ${user.name} 的出口改为 ${profile || '跟随当前 profile'}？此用户实例会重启并断开其现有连接，其他用户保持连接。`,
+      '确认切换出口',
+      { confirmButtonText: '确认', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  if (await mutate(`users/${user.id}/route`, { profile })) await refresh()
 }
 async function reveal(user: User) {
   busy.value = true
@@ -190,9 +251,10 @@ onBeforeUnmount(() => {
       <header class="card-header" :class="{ padded: !embedded }">
         <div>
           <h2>{{ embedded ? 'AnyTLS 用户' : '客户端订阅' }}</h2>
-          <p v-if="status?.configured">
-            {{ status.domain }} · {{ status.enabled ? 'AnyTLS 已启用' : 'AnyTLS 已停用' }} ·
-            sing-box {{ status.version }}
+          <p v-if="status?.configured" class="sub">
+            <span class="health" :class="status.enabled ? 'tone-ok' : 'tone-idle'"
+              ><span class="status-dot" /><span class="mono">{{ status.domain }}</span></span
+            >
           </p>
         </div>
         <div class="button-row">
@@ -231,6 +293,21 @@ onBeforeUnmount(() => {
               ><span class="mono">{{ row.port }}</span></template
             ></el-table-column
           >
+          <el-table-column label="出口" min-width="170">
+            <template #default="{ row }"
+              ><el-select
+                :model-value="row.profile"
+                :aria-label="'出口 ' + row.id"
+                :disabled="busy || conflict || loading"
+                size="small"
+                @change="(v: string) => route(row, v)"
+                ><el-option label="跟随当前 profile" value="" /><el-option
+                  v-for="p in profiles"
+                  :key="p"
+                  :label="p"
+                  :value="p" /></el-select
+            ></template>
+          </el-table-column>
           <el-table-column label="状态" width="100">
             <template #default="{ row }"
               ><span
@@ -277,16 +354,26 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
         </el-table>
-        <p class="hint" :class="{ padded: !embedded }">
-          适用于支持 AnyTLS 的 Mihomo 客户端，仅
-          TCP。每个用户有独立端口，全部用户跟随服务端当前代理池。 请在防火墙及云安全组放行实际分配的
-          TCP 端口；禁用用户会同时终止其连接和订阅访问。
-        </p>
+        <p class="hint" :class="{ padded: !embedded }">需在防火墙放行各用户的 TCP 端口。</p>
       </template>
       <div v-else-if="status" class="empty-state">
         <strong>AnyTLS 尚未初始化</strong>
-        <p>先完成 HTTPS 部署，再在<a href="#/setup">“部署设置”</a>中初始化 AnyTLS。</p>
-        <p class="hint">安装校验后的 AnyTLS 内核后，可在此创建独立用户和订阅。</p>
+        <p v-if="!tlsEnabled" class="muted">需先完成 HTTPS</p>
+        <el-alert
+          v-if="job"
+          :title="`${job.step} · ${job.status}`"
+          :description="job.error"
+          :type="job.status === 'failed' || job.status === 'interrupted' ? 'error' : 'info'"
+          :closable="false"
+          show-icon
+        />
+        <el-button
+          v-if="!embedded"
+          type="primary"
+          :disabled="!tlsEnabled || busy || running()"
+          @click="initialize"
+          >初始化 AnyTLS</el-button
+        >
       </div>
     </section>
     <el-drawer

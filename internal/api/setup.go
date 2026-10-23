@@ -58,6 +58,11 @@ func (h *Handler) setup(w http.ResponseWriter, r *http.Request) bool {
 		if r.Method != "POST" || path == "/setup" || strings.HasPrefix(path, "/setup/jobs/") {
 			return fail(405, "method_not_allowed", "方法不支持")
 		}
+		if path != "/anytls/setup" {
+			if e := m.SetupOpen(); e != nil {
+				return e
+			}
+		}
 		expected := r.Header.Get("If-Match")
 		if expected == "" {
 			return fail(428, "revision_required", "需要 If-Match")
@@ -145,6 +150,10 @@ func (h *Handler) setup(w http.ResponseWriter, r *http.Request) bool {
 		if errors.Is(err, manage.ErrSetupBusy) || errors.Is(err, manage.ErrTLSBusy) {
 			status = 409
 			code = "setup_busy"
+		}
+		if errors.Is(err, manage.ErrSetupCompleted) || errors.Is(err, manage.ErrAnyTLSConfigured) {
+			status = 409
+			code = "setup_completed"
 		}
 		var ae *Error
 		if errors.As(err, &ae) {

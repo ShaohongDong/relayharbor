@@ -86,6 +86,11 @@ func (m *Manager) Logs(ctx context.Context, s *State, c config.Config, limit int
 		for _, u := range cfg.Listener.Users {
 			secrets = append(secrets, u.Password)
 		}
+		for _, e := range cfg.Entries {
+			for _, u := range e.Users {
+				secrets = append(secrets, u.Password)
+			}
+		}
 		for _, p := range cfg.Profiles {
 			for _, n := range p.Nodes {
 				if n.Auth != nil {

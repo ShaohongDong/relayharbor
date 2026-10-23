@@ -170,22 +170,48 @@ func (m *Manager) Status(ctx context.Context, s *State) (map[string]any, error) 
 	return v, nil
 }
 func (m *Manager) Preflight(c config.Config, old *config.Config) error {
+	if e := m.anyTLSBindings(c); e != nil {
+		return e
+	}
+	reserved := map[string]string{}
 	if v, e := m.Access(); e != nil {
 		return e
 	} else if v.Port != 0 {
-		_, port, _ := net.SplitHostPort(c.Listener.Addr)
-		if port == fmt.Sprint(v.Port) {
-			return errors.New("入口端口已预留给管理 HTTPS")
+		reserved[fmt.Sprint(v.Port)] = "入口端口已预留给管理 HTTPS"
+	}
+	if s, e := m.loadAnyTLS(); e != nil {
+		return e
+	} else if s != nil {
+		for _, u := range s.Users {
+			reserved[fmt.Sprint(u.Port)] = "入口端口已分配给 AnyTLS 用户 " + u.ID
 		}
 	}
-	if old != nil && c.Listener.Addr == old.Listener.Addr {
-		return nil
+	current := map[string]bool{}
+	if old != nil {
+		current[old.Listener.Addr] = true
+		for _, e := range old.Entries {
+			current[e.Addr] = true
+		}
 	}
-	l, e := net.Listen("tcp", c.Listener.Addr)
-	if e != nil {
-		return errors.New("入口 TCP 端口已占用或 IP 不属于本机")
+	addrs := []string{c.Listener.Addr}
+	for _, e := range c.Entries {
+		addrs = append(addrs, e.Addr)
 	}
-	return l.Close()
+	for _, addr := range addrs {
+		_, port, _ := net.SplitHostPort(addr)
+		if reason := reserved[port]; reason != "" {
+			return errors.New(reason)
+		}
+		if current[addr] {
+			continue
+		}
+		l, e := net.Listen("tcp", addr)
+		if e != nil {
+			return fmt.Errorf("入口 %s TCP 端口已占用或 IP 不属于本机", addr)
+		}
+		l.Close()
+	}
+	return nil
 }
 func (m *Manager) health(ctx context.Context, c config.Config) error {
 	budget := 12 * time.Second
@@ -195,31 +221,13 @@ func (m *Manager) health(ctx context.Context, c config.Config) error {
 		}
 	}
 	deadline := time.Now().Add(budget)
-	host, port, _ := net.SplitHostPort(c.Listener.Addr)
-	if host == "0.0.0.0" {
-		host = "127.0.0.1"
-	}
-	if host == "::" {
-		host = "::1"
-	}
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		good := m.Active(ctx)
-		for _, auth := range c.Listener.Users {
-			conn, e := net.DialTimeout("tcp", net.JoinHostPort(host, port), 300*time.Millisecond)
-			if e != nil {
-				good = false
-				break
-			}
-			conn.SetDeadline(time.Now().Add(time.Second))
-			e = socks.Authenticate(conn, auth)
-			conn.Close()
-			if e != nil {
-				good = false
-				break
-			}
+		good := m.Active(ctx) && checkUsers(c.Listener.Addr, c.Listener.Users)
+		for _, e := range c.Entries {
+			good = good && checkUsers(e.Addr, e.Users)
 		}
 		if good {
 			return nil
@@ -227,6 +235,30 @@ func (m *Manager) health(ctx context.Context, c config.Config) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return errors.New("服务未通过启动及 SOCKS5 认证检查")
+}
+
+// checkUsers verifies every user authenticates at a local SOCKS entry.
+func checkUsers(addr string, users []config.Auth) bool {
+	host, port, _ := net.SplitHostPort(addr)
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	if host == "::" {
+		host = "::1"
+	}
+	for _, auth := range users {
+		conn, e := net.DialTimeout("tcp", net.JoinHostPort(host, port), 300*time.Millisecond)
+		if e != nil {
+			return false
+		}
+		conn.SetDeadline(time.Now().Add(time.Second))
+		e = socks.Authenticate(conn, auth)
+		conn.Close()
+		if e != nil {
+			return false
+		}
+	}
+	return true
 }
 func (m *Manager) apiHealth(ctx context.Context) error {
 	deadline := time.Now().Add(5 * time.Second)
@@ -396,6 +428,11 @@ func (m *Manager) Apply(ctx context.Context, s *State, rel Release, c config.Con
 	if e := m.ValidateNative(ctx, rel, native.Frontend(c, options)); e != nil {
 		return e
 	}
+	for _, en := range c.Entries {
+		if e := m.ValidateNative(ctx, rel, native.Entry(en, options)); e != nil {
+			return e
+		}
+	}
 	for _, p := range c.Profiles {
 		for _, n := range p.Nodes {
 			if e := m.ValidateNative(ctx, rel, native.Worker("127.0.0.1:1081", options.Auth, &n)); e != nil {
@@ -424,7 +461,7 @@ func (m *Manager) Apply(ctx context.Context, s *State, rel Release, c config.Con
 	if e != nil {
 		return e
 	}
-	hot := !fresh && s.Current == rel && reflect.DeepEqual(c.Listener, old.Listener) && s.ManagerSHA == hash && want.Active == previous.Active && want.Enabled == previous.Enabled
+	hot := !fresh && s.Current == rel && reflect.DeepEqual(c.Static(), old.Static()) && s.ManagerSHA == hash && want.Active == previous.Active && want.Enabled == previous.Enabled
 	paths := []string{m.P.Config, m.P.Manifest, m.P.Input, m.P.Unit, m.P.APIUnit, m.P.State, m.P.Token, m.P.Control, filepath.Clean(filepath.Join(filepath.Dir(m.P.Control), "../bin/gost"))}
 	files := []fileSnapshot{}
 	for _, p := range paths {

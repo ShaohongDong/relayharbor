@@ -46,12 +46,11 @@ const { nodeOpen, nodeOrigin, nodeEditor, nodePool, pools, saveNode, setNodeAuth
             aria-label="上游密码"
             type="password"
             autocomplete="new-password"
-            :placeholder="nodeEditor.auth.passwordSet ? '已设置，留空保留原密码' : '必须填写密码'"
+            :placeholder="nodeEditor.auth.passwordSet ? '留空保留原密码' : ''"
         /></el-form-item>
       </div>
-      <p class="hint">
-        HTTP 使用 CONNECT，到上游的连接不启用 TLS。修改所属池、节点 ID
-        或认证用户名后，需要重新填写上游密码。
+      <p v-if="nodeOrigin && nodeEditor.auth" class="hint">
+        修改池、ID 或用户名后需重新填写密码
       </p></el-form
     >
     <template #footer

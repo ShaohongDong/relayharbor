@@ -41,7 +41,7 @@ func read(path string) (config.Config, error) {
 func Main(ctx context.Context, args []string, out io.Writer) error {
 	for _, a := range args {
 		if a == "--help" || a == "-h" {
-			fmt.Fprintln(out, "用法：gostctl COMMAND [OPTIONS]\n命令：init check install configure profile upgrade rollback start stop restart status logs uninstall version tls anytls auth\nauth: reset\nanytls: setup [--sing-box-archive FILE] | status | enable | disable\nanytls user: add --id ID --name NAME [--port PORT] | rename --id ID --name NAME | enable/disable/delete/reset-token/reset-password/credentials --id ID\ninit: --output FILE [--listen IP:PORT] [--udp]\ncheck/configure: --config FILE; install: [--config FILE] [--setup-host HOST] [--setup-port PORT]\ninstall/upgrade: --version VERSION [--archive FILE --checksums FILE]\nprofile: list | use NAME | probe NAME\ntls: setup --domain DOMAIN --email EMAIL --accept-tos [--lego-archive FILE --lego-checksums FILE] | status | renew | reload | disable\ninstall: [--domain DOMAIN --email EMAIL --accept-tos]\nuninstall: [--purge]    logs: [--follow]")
+			fmt.Fprintln(out, "用法：gostctl COMMAND [OPTIONS]\n命令：init check install configure profile upgrade rollback start stop restart status logs uninstall version tls anytls auth\nauth: reset\nanytls: setup [--sing-box-archive FILE] | status | enable | disable\nanytls user: add --id ID --name NAME [--port PORT] [--profile NAME] | rename --id ID --name NAME | route --id ID --profile NAME（空字符串跟随当前 profile） | enable/disable/delete/reset-token/reset-password/credentials --id ID\ninit: --output FILE [--listen IP:PORT] [--udp]\ncheck/configure: --config FILE; install: [--config FILE] [--setup-host HOST] [--setup-port PORT]\ninstall/upgrade: --version VERSION [--archive FILE --checksums FILE]\nprofile: list | use NAME | probe NAME\ntls: setup --domain DOMAIN --email EMAIL --accept-tos [--lego-archive FILE --lego-checksums FILE] | status | renew | reload | disable\ninstall: [--domain DOMAIN --email EMAIL --accept-tos]\nuninstall: [--purge]    logs: [--follow]")
 			return nil
 		}
 	}
@@ -120,7 +120,7 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 		var udp bool
 		f, e := parse(name, args, func(f *flag.FlagSet) {
 			f.StringVar(&path, "output", "", "")
-			f.StringVar(&addr, "listen", "0.0.0.0:1080", "")
+			f.StringVar(&addr, "listen", config.DefaultListen(), "")
 			f.BoolVar(&udp, "udp", false, "")
 		})
 		if e != nil {
@@ -246,7 +246,7 @@ func Main(ctx context.Context, args []string, out io.Writer) error {
 					f.Close()
 					return e
 				}
-				_, e = f.Write(config.Bytes(config.Initial("0.0.0.0:1080", false)))
+				_, e = f.Write(config.Bytes(config.Initial(config.DefaultListen(), false)))
 				ce := f.Close()
 				if e != nil {
 					return e

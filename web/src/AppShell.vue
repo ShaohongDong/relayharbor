@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import Icon, { type IconName } from './Icon.vue'
 import { useConsole, type View } from './console'
 import OverviewView from './views/OverviewView.vue'
@@ -19,6 +19,7 @@ const {
   busy,
   refreshing,
   view,
+  setupDone,
   error,
   disconnected,
   conflict,
@@ -30,7 +31,7 @@ const {
   previewOpen,
   serviceLabel,
   serviceTone,
-  go,
+  setupFinished,
   showError,
   logout,
   refresh,
@@ -39,110 +40,84 @@ const {
   useProfile,
 } = useConsole()
 
-const pages: { view: View; label: string; icon: IconName; subtitle: string }[] = [
-  { view: 'overview', label: '概览', icon: 'overview', subtitle: '服务状态、出口与节点健康' },
-  {
-    view: 'nodes',
-    label: '代理池与节点',
-    icon: 'nodes',
-    subtitle: '健康节点按新连接轮询；故障切换限于当前池',
-  },
-  {
-    view: 'listener',
-    label: '入口与认证',
-    icon: 'listener',
-    subtitle: 'SOCKS5 入口地址与必需的入口认证',
-  },
-  {
-    view: 'subscriptions',
-    label: '客户端订阅',
-    icon: 'subscriptions',
-    subtitle: 'AnyTLS 用户、独立端口与订阅链接',
-  },
-  { view: 'https', label: 'HTTPS 证书', icon: 'https', subtitle: '域名证书、自动续期与 Nginx' },
-  {
-    view: 'operations',
-    label: '服务运维',
-    icon: 'operations',
-    subtitle: '启动、停止、回滚与管理日志',
-  },
-  { view: 'setup', label: '部署设置', icon: 'setup', subtitle: '域名 HTTPS、AnyTLS 与基础模式' },
+const consolePages: { view: View; label: string; icon: IconName }[] = [
+  { view: 'overview', label: '概览', icon: 'overview' },
+  { view: 'nodes', label: '代理池与节点', icon: 'nodes' },
+  { view: 'listener', label: '入口与认证', icon: 'listener' },
+  { view: 'subscriptions', label: '客户端订阅', icon: 'subscriptions' },
+  { view: 'https', label: 'HTTPS 证书', icon: 'https' },
+  { view: 'operations', label: '服务运维', icon: 'operations' },
 ]
-const current = computed(() => pages.find((p) => p.view === view.value) ?? pages[0])
-const navOpen = ref(false)
-watch(view, () => (navOpen.value = false))
+const setupPage = { view: 'setup' as View, label: '部署设置', icon: 'setup' as IconName }
+// Before completion only the wizard is reachable; afterwards it has no entry at all.
+const pages = computed(() => (setupDone.value === false ? [setupPage] : consolePages))
+const current = computed(() => pages.value.find((p) => p.view === view.value) ?? pages.value[0])
 </script>
 
 <template>
-  <div class="shell" :class="{ 'nav-open': navOpen, 'has-savebar': dirty || conflict }">
-    <aside class="sidebar" aria-label="侧边栏">
-      <div class="sidebar-brand">
-        <span class="brand-mark">R</span>
-        <div>
-          <strong>RelayHarbor</strong>
-          <span>GOST 控制台</span>
-        </div>
-      </div>
-      <nav class="sidebar-nav" aria-label="主导航">
+  <div class="shell" :class="{ 'has-savebar': dirty || conflict }">
+    <aside class="rail" aria-label="侧边栏">
+      <span class="brand-mark" title="RelayHarbor">R</span>
+      <nav class="rail-nav" aria-label="主导航">
         <a
           v-for="p in pages"
           :key="p.view"
+          class="rail-item"
           :href="`#/${p.view}`"
+          :aria-label="p.label"
+          :data-tip="p.label"
           :aria-current="view === p.view ? 'page' : undefined"
-          @click="navOpen = false"
-          ><Icon :name="p.icon" /><span>{{ p.label }}</span></a
-        >
+          ><Icon :name="p.icon" :size="19"
+        /></a>
       </nav>
-      <div class="sidebar-foot">
-        <span class="mono">GOST {{ status?.version }} · {{ status?.arch }}</span>
-        <button type="button" class="sidebar-logout" :disabled="busy || refreshing" @click="logout">
-          <Icon name="logout" :size="16" /><span>断开认证</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        class="rail-item"
+        aria-label="断开认证"
+        :data-tip="`断开认证 · GOST ${status?.version ?? ''} · ${status?.arch ?? ''}`"
+        :disabled="busy || refreshing"
+        @click="logout"
+      >
+        <Icon name="logout" :size="18" />
+      </button>
     </aside>
-    <div class="scrim" @click="navOpen = false" />
 
     <div class="main">
       <header class="topbar">
-        <button
-          type="button"
-          class="menu-button"
-          aria-label="打开导航"
-          :aria-expanded="navOpen"
-          @click="navOpen = !navOpen"
-        >
-          <Icon name="menu" />
-        </button>
-        <div class="page-title">
-          <h1>{{ current.label }}</h1>
-          <p>{{ current.subtitle }}</p>
-        </div>
-        <div class="topbar-actions">
-          <span class="status-pill" :class="`tone-${serviceTone}`" role="status"
-            ><span class="status-dot" />{{ serviceLabel }}</span
+        <h1>{{ current.label }}</h1>
+        <div v-if="setupDone" class="topbar-actions">
+          <span
+            class="status-pill"
+            :class="`tone-${serviceTone}`"
+            role="status"
+            :title="serviceLabel"
+            ><span class="status-dot" /><span class="status-text">{{ serviceLabel }}</span></span
           >
-          <div class="exit-picker">
-            <span>当前出口</span
-            ><el-select
-              :model-value="status?.activeProfile"
-              aria-label="当前出口"
-              :disabled="busy || refreshing || conflict || disconnected"
-              @change="useProfile"
-              ><el-option
-                v-for="p in base!.profiles"
-                :key="p.name"
-                :label="p.name + (p.type === 'direct' ? ' · 直连' : '')"
-                :value="p.name"
-            /></el-select>
-          </div>
-          <span class="conn-meta" title="当前连接数"
+          <el-select
+            :model-value="status?.activeProfile"
+            aria-label="当前出口"
+            :disabled="busy || refreshing || conflict || disconnected"
+            @change="useProfile"
+            ><template #prefix><Icon name="exit" :size="14" /></template
+            ><el-option
+              v-for="p in base!.profiles"
+              :key="p.name"
+              :label="p.name + (p.type === 'direct' ? ' · 直连' : '')"
+              :value="p.name"
+          /></el-select>
+          <span class="conn-meta" title="活动连接"
             ><Icon name="link" :size="15" />{{ status?.connections ?? 0 }}</span
           >
-          <el-button :disabled="busy || refreshing" :loading="refreshing" @click="refresh"
-            ><Icon v-if="!refreshing" name="refresh" :size="15" /><span class="btn-text"
-              >刷新状态</span
-            ></el-button
+          <button
+            type="button"
+            class="icon-button"
+            aria-label="刷新状态"
+            title="刷新状态"
+            :disabled="busy || refreshing"
+            @click="refresh"
           >
+            <Icon name="refresh" :size="15" :class="{ spin: refreshing }" />
+          </button>
         </div>
       </header>
 
@@ -179,9 +154,9 @@ watch(view, () => (navOpen.value = false))
         />
         <OperationsView v-else-if="view === 'operations'" />
         <SetupPanel
-          v-else-if="view === 'setup'"
+          v-else-if="view === 'setup' && setupDone === false"
           :token="token"
-          @done="go('overview')"
+          @done="setupFinished"
           @error="showError"
         />
       </main>
@@ -190,9 +165,7 @@ watch(view, () => (navOpen.value = false))
         <footer v-if="dirty || conflict" class="savebar" role="region" aria-label="未应用修改">
           <div class="savebar-text">
             <strong>有未应用修改</strong
-            ><span>{{
-              restart ? '应用时需要重启服务，已有连接会中断' : '应用时保留已有连接'
-            }}</span>
+            ><span v-if="restart" class="savebar-warn">应用时需要重启服务，已有连接会中断</span>
           </div>
           <div class="savebar-actions">
             <el-button :disabled="!dirty || busy || refreshing" @click="reload">放弃修改</el-button

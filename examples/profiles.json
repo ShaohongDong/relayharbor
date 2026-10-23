@@ -5,6 +5,11 @@
     "udp": false,
     "users": [{"username": "proxy", "password": "CHANGE_ME_entry_password"}]
   },
+  "entries": [
+    {"name": "office-in", "addr": "0.0.0.0:1081", "udp": false,
+     "users": [{"username": "office", "password": "CHANGE_ME_office_entry_password"}],
+     "profile": "office"}
+  ],
   "activeProfile": "direct",
   "profiles": [
     {"name": "direct", "type": "direct"},
